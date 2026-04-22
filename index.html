@@ -700,8 +700,28 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
   </main>
 </div>
 
+<script src="https://alcdn.msauth.net/browser/2.39.0/js/msal-browser.min.js"></script>
 <script>
 const DB_KEY = "unified_master_tracker_only_v2";
+const HAWM_CONFIG = {
+  tenantId: "9af4e171-076f-4cb4-9f6e-169823074c53",
+  tenantDomain: "heave-away.ca",
+  sharePointHost: "heaveawaynl.sharepoint.com",
+  sharePointSitePath: "/sites/HAWMTracker",
+  clientId: "8525c5f0-92ed-42cc-a352-381515a02145",
+  graphScopes: ["User.Read", "https://graph.microsoft.com/Sites.ReadWrite.All"],
+  ...window.__HAWM_CONFIG__
+};
+const FEATURE_FLAGS = {
+  write_enabled_incidents: false,
+  write_enabled_training: false,
+  write_enabled_documents: false,
+  file_upload_enabled: false,
+  read_only_mode: true
+};
+let msalClient = null;
+let graphSiteId = "";
+const graphListIdCache = new Map();
 const defaultDB = { state:{selectedCompany:"All Companies",lastExport:"",lastImport:""}, people:[], training:[], documents:[], manual:[], cor:[], corOverrides:{}, toolbox:[], vehicleInspections:[], inspections:[], incidents:[], hazard:[], committee:[], correctiveActions:[], incidentCounters:{} };
 const companyRoles = {
   "Heave Away":["Manager","Safety","Roll Off","Front Load","Fork Truck"],
@@ -870,13 +890,502 @@ function populateIncidentCauseDropdowns(){
 }
 
 
-let db = loadDB();
-
 function deepCopy(obj){ return JSON.parse(JSON.stringify(obj)); }
-function loadDB(){ try{ return {...deepCopy(defaultDB), ...JSON.parse(localStorage.getItem(DB_KEY)||"{}")}; } catch(e){ return deepCopy(defaultDB); } }
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+let db = deepCopy(defaultDB);
+
+function loadCachedDB(){ try{ return {...deepCopy(defaultDB), ...JSON.parse(localStorage.getItem(DB_KEY)||"{}")}; } catch(e){ return deepCopy(defaultDB); } }
+function persistLocalSnapshot(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e){ console.warn("Local cache write failed", e); } }
+function saveDB(){
+  if(FEATURE_FLAGS.read_only_mode || !FEATURE_FLAGS.write_enabled_incidents || !FEATURE_FLAGS.write_enabled_training || !FEATURE_FLAGS.write_enabled_documents){
+    console.info("HAWM portal is in read-only mode. Changes remain local only.");
+    persistLocalSnapshot();
+    return;
+  }
+  persistLocalSnapshot();
+}
 function byId(id){ return document.getElementById(id); }
 function esc(v){ return (v??"").toString().replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+function normalizeText(v){ return (v ?? "").toString().trim(); }
+function toBoolean(v){ return [true, "true", "1", 1, "yes", "Yes"].includes(v); }
+function toArray(v){
+  if(Array.isArray(v)) return v.filter(Boolean);
+  if(!v) return [];
+  if(typeof v === "string"){
+    return v.split(/;#|,|\n/).map(x => x.trim()).filter(Boolean);
+  }
+  return [v].filter(Boolean);
+}
+function fieldValue(fields, keys, fallback=""){
+  for(const key of keys){
+    if(fields && fields[key] !== undefined && fields[key] !== null) return fields[key];
+  }
+  return fallback;
+}
+function noteToArray(value){
+  if(Array.isArray(value)) return value;
+  if(!value) return [];
+  try { return JSON.parse(value); } catch(e) {}
+  return toArray(value);
+}
+function getRuntimeClientId(){
+  return HAWM_CONFIG.clientId && HAWM_CONFIG.clientId !== "SET_AFTER_APP_REGISTRATION" ? HAWM_CONFIG.clientId : "";
+}
+function hasGraphRuntimeConfig(){
+  return !!getRuntimeClientId() && !!HAWM_CONFIG.tenantId && !!window.msal;
+}
+async function ensureMsalClient(){
+  if(msalClient) return msalClient;
+  if(!hasGraphRuntimeConfig()) return null;
+  msalClient = new window.msal.PublicClientApplication({
+    auth: {
+      clientId: getRuntimeClientId(),
+      authority: `https://login.microsoftonline.com/${HAWM_CONFIG.tenantId}`,
+      redirectUri: window.location.origin,
+      postLogoutRedirectUri: window.location.origin,
+      navigateToLoginRequestUrl: false
+    },
+    cache: {
+      cacheLocation: "sessionStorage",
+      storeAuthStateInCookie: false
+    }
+  });
+  await msalClient.initialize();
+  return msalClient;
+}
+async function getGraphToken(){
+  const client = await ensureMsalClient();
+  if(!client) throw new Error("MSAL client is not configured. Set HAWM_CONFIG.clientId after app registration.");
+  let account = client.getActiveAccount() || client.getAllAccounts()[0] || null;
+  if(!account){
+    const loginResponse = await client.loginPopup({ scopes: HAWM_CONFIG.graphScopes });
+    account = loginResponse.account;
+    client.setActiveAccount(account);
+  }
+  try {
+    const tokenResponse = await client.acquireTokenSilent({
+      account,
+      scopes: HAWM_CONFIG.graphScopes
+    });
+    return tokenResponse.accessToken;
+  } catch(e){
+    const tokenResponse = await client.acquireTokenPopup({
+      account,
+      scopes: HAWM_CONFIG.graphScopes
+    });
+    return tokenResponse.accessToken;
+  }
+}
+async function graphCall(path, options={}){
+  const token = await getGraphToken();
+  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {})
+    }
+  });
+  if(response.status === 204) return null;
+  if(!response.ok){
+    const errorText = await response.text();
+    throw new Error(`Graph ${response.status}: ${errorText}`);
+  }
+  return response.json();
+}
+async function getGraphSiteId(){
+  if(graphSiteId) return graphSiteId;
+  const site = await graphCall(`/sites/${HAWM_CONFIG.sharePointHost}:${HAWM_CONFIG.sharePointSitePath}`);
+  graphSiteId = site.id;
+  return graphSiteId;
+}
+async function getGraphListId(listName){
+  if(graphListIdCache.has(listName)) return graphListIdCache.get(listName);
+  const siteId = await getGraphSiteId();
+  const lists = await graphCall(`/sites/${siteId}/lists?$select=id,displayName,name`);
+  const match = (lists.value || []).find(list => [list.displayName, list.name].includes(listName));
+  if(!match) throw new Error(`List not found: ${listName}`);
+  graphListIdCache.set(listName, match.id);
+  return match.id;
+}
+async function getListItems(listName){
+  const siteId = await getGraphSiteId();
+  const listId = await getGraphListId(listName);
+  const result = await graphCall(`/sites/${siteId}/lists/${listId}/items?expand=fields&$top=5000`);
+  return result.value || [];
+}
+async function loadFeatureFlags(){
+  if(!hasGraphRuntimeConfig()) return FEATURE_FLAGS;
+  try {
+    const items = await getListItems("_Config");
+    items.forEach(item => {
+      const title = normalizeText(fieldValue(item.fields, ["Title"]));
+      if(title && Object.prototype.hasOwnProperty.call(FEATURE_FLAGS, title)) FEATURE_FLAGS[title] = toBoolean(fieldValue(item.fields, ["Value"]));
+    });
+  } catch(e){
+    console.warn("Feature flag fetch failed. Using defaults.", e);
+  }
+  return FEATURE_FLAGS;
+}
+function mapPeople(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    name: normalizeText(fieldValue(item.fields, ["Name", "Title"])),
+    department: normalizeText(fieldValue(item.fields, ["Department"])),
+    status: normalizeText(fieldValue(item.fields, ["Status"], "Active")),
+    roles: toArray(fieldValue(item.fields, ["Roles"], []))
+  }));
+}
+function mapTraining(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    employee: normalizeText(fieldValue(item.fields, ["Employee", "Title"])),
+    course: normalizeText(fieldValue(item.fields, ["Course"])),
+    status: normalizeText(fieldValue(item.fields, ["Status"], "Valid")),
+    complete: normalizeText(fieldValue(item.fields, ["Completion_x0020_Date", "Completion Date"])),
+    expiry: normalizeText(fieldValue(item.fields, ["Expiry_x0020_Date", "Expiry Date"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"])),
+    documentPresent: noteToArray(fieldValue(item.fields, ["CertificateFileIDs"], [])).length ? "Yes" : "No",
+    documentName: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    certificates: noteToArray(fieldValue(item.fields, ["CertificateFileIDs"], []))
+  }));
+}
+function mapDocuments(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    name: normalizeText(fieldValue(item.fields, ["Title"])),
+    number: normalizeText(fieldValue(item.fields, ["Number", "Doc_x0020__x0023_"])),
+    revision: normalizeText(fieldValue(item.fields, ["Version"])),
+    owner: normalizeText(fieldValue(item.fields, ["Owner"])),
+    effective: normalizeText(fieldValue(item.fields, ["Effective"])),
+    review: normalizeText(fieldValue(item.fields, ["Next_x0020_Review_x0020_Due", "Next Review Due"])),
+    manual: normalizeText(fieldValue(item.fields, ["Manual_x0020_Section", "Manual Section"])),
+    cor: normalizeText(fieldValue(item.fields, ["COR_x0020_Section", "COR Section"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"])),
+    filePresent: noteToArray(fieldValue(item.fields, ["FileIDs"], [])).length ? "Yes" : "No",
+    fileName: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    type: normalizeText(fieldValue(item.fields, ["Document_x0020_Type", "Document Type"])),
+    lastReviewed: normalizeText(fieldValue(item.fields, ["Last_x0020_Review_x0020_Date", "Last Review Date"]))
+  }));
+}
+function mapManual(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    section: normalizeText(fieldValue(item.fields, ["Title"])),
+    owner: normalizeText(fieldValue(item.fields, ["Owner"])),
+    status: normalizeText(fieldValue(item.fields, ["Priority"], "Current")),
+    document: normalizeText(fieldValue(item.fields, ["Document"])),
+    content: normalizeText(fieldValue(item.fields, ["Content"]))
+  }));
+}
+function mapCor(items){
+  return items.map(item => {
+    const compliant = toBoolean(fieldValue(item.fields, ["Compliant"], false));
+    const section = normalizeText(fieldValue(item.fields, ["Section", "Title"]));
+    return {
+      company: normalizeText(fieldValue(item.fields, ["Company"])),
+      section,
+      requiredTypes: (corRequiredTypes[section] || []).join(", "),
+      presentTypes: compliant ? (corRequiredTypes[section] || []).join(", ") : "",
+      missingTypes: compliant ? "" : (corRequiredTypes[section] || []).join(", "),
+      documentCount: compliant ? 1 : 0,
+      validDocumentCount: compliant ? 1 : 0,
+      status: compliant ? "Pass" : "Fail",
+      pct: compliant ? 100 : 0,
+      notes: normalizeText(fieldValue(item.fields, ["Comment"])),
+      lastAuditDate: normalizeText(fieldValue(item.fields, ["Last_x0020_Audit_x0020_Date", "Last Audit Date"]))
+    };
+  });
+}
+function mapCorOverrides(items){
+  return items.reduce((acc, item) => {
+    const company = normalizeText(fieldValue(item.fields, ["Company"]));
+    const section = normalizeText(fieldValue(item.fields, ["Section", "Title"]));
+    if(!company || !section) return acc;
+    acc[`${company}||${section}`] = {
+      status: "Override",
+      reason: normalizeText(fieldValue(item.fields, ["Override_x0020_Notes", "Override Notes"]))
+    };
+    return acc;
+  }, {});
+}
+function mapToolbox(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    date: normalizeText(fieldValue(item.fields, ["Date"])),
+    presenter: normalizeText(fieldValue(item.fields, ["Presenter"])),
+    topic: normalizeText(fieldValue(item.fields, ["Topic", "Title"])),
+    attendees: noteToArray(fieldValue(item.fields, ["Attendees"], [])),
+    documentReviewed: "No",
+    documentIndex: "",
+    uploads: [],
+    notes: normalizeText(fieldValue(item.fields, ["Notes"])),
+    durationMinutes: normalizeText(fieldValue(item.fields, ["Duration_x0020_Minutes", "Duration Minutes"]))
+  }));
+}
+function mapVehicle(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    dateReported: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
+    reportedBy: normalizeText(fieldValue(item.fields, ["Inspector"])),
+    unit: normalizeText(fieldValue(item.fields, ["Vehicle_x0020_ID", "Vehicle ID"])),
+    plate: "",
+    severity: normalizeText(fieldValue(item.fields, ["Pass_x002f_Fail", "Pass/Fail"])),
+    outOfService: toBoolean(fieldValue(item.fields, ["Out_x0020_of_x0020_Service_x003f_", "Out of Service?"])) ? "Yes" : "No",
+    assigned: "",
+    defect: normalizeText(fieldValue(item.fields, ["Defects_x0020_Found", "Defects Found"])),
+    repairDue: "",
+    dateRepaired: "",
+    uploads: noteToArray(fieldValue(item.fields, ["DefectPhotoFileIDs"], []))
+  }));
+}
+function mapInspections(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    date: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
+    crew: "",
+    location: normalizeText(fieldValue(item.fields, ["Area", "Title"])),
+    inspector: normalizeText(fieldValue(item.fields, ["Inspector"])),
+    notes: normalizeText(fieldValue(item.fields, ["Findings"])),
+    proofPresent: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No",
+    proofDescription: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    uploads: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])),
+    actions: noteToArray(fieldValue(item.fields, ["Embedded_x0020_CAs", "Embedded CAs"], []))
+  }));
+}
+function mapIncidents(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    incidentNumber: normalizeText(fieldValue(item.fields, ["Incident_x0020_ID", "Incident ID", "Title"])),
+    date: normalizeText(fieldValue(item.fields, ["Date"])),
+    employee: normalizeText(fieldValue(item.fields, ["Employee_x0020__x0028_Injured_x0029_", "Employee (Injured)"])),
+    witnesses: noteToArray(fieldValue(item.fields, ["Witnesses"], [])),
+    location: normalizeText(fieldValue(item.fields, ["Location"])),
+    severity: normalizeText(fieldValue(item.fields, ["Investigation_x0020_Status", "Investigation Status"], "Open")),
+    immediateCause: noteToArray(fieldValue(item.fields, ["Immediate_x0020_Causes", "Immediate Causes"], [])),
+    basicCause: noteToArray(fieldValue(item.fields, ["Basic_x0020_Causes", "Basic Causes"], [])),
+    issueTags: [],
+    description: normalizeText(fieldValue(item.fields, ["Description"])),
+    photosPresent: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No",
+    videoPresent: "No",
+    proofDescription: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["Reported_x0020_By", "Reported By"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    uploads: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])),
+    actions: [],
+    issueTagsText: ""
+  }));
+}
+function mapHazard(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    date: normalizeText(fieldValue(item.fields, ["Assessment_x0020_Date", "Assessment Date"])),
+    task: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process", "Title"])),
+    location: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process"])),
+    leader: normalizeText(fieldValue(item.fields, ["Assigned_x0020_To", "Assigned To"])),
+    hazards: normalizeText(fieldValue(item.fields, ["Hazard_x0020_Type", "Hazard Type"])),
+    controls: normalizeText(fieldValue(item.fields, ["Controls"])),
+    proofPresent: noteToArray(fieldValue(item.fields, ["ProofFileIDs"], [])).length ? "Yes" : "No",
+    proofDescription: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    uploads: noteToArray(fieldValue(item.fields, ["ProofFileIDs"], []))
+  }));
+}
+function mapCommittee(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    name: normalizeText(fieldValue(item.fields, ["Title"])),
+    role: normalizeText(fieldValue(item.fields, ["Role"])),
+    due: normalizeText(fieldValue(item.fields, ["Next_x0020_Meeting_x0020_Date", "Next Meeting Date", "Meeting_x0020_Date", "Meeting Date"])),
+    notes: normalizeText(fieldValue(item.fields, ["Decisions_x002f_Actions", "Decisions/Actions", "Topics_x0020_Discussed", "Topics Discussed"])),
+    proofPresent: noteToArray(fieldValue(item.fields, ["UploadFileIDs"], [])).length ? "Yes" : "No",
+    proofDescription: "",
+    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    uploads: noteToArray(fieldValue(item.fields, ["UploadFileIDs"], []))
+  }));
+}
+function mapCorrectiveActions(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    source: normalizeText(fieldValue(item.fields, ["Triggered_x0020_By", "Triggered By"])),
+    reference: normalizeText(fieldValue(item.fields, ["Related_x0020_Incident_x002f_Inspection", "Related Incident/Inspection", "CA_x0020_ID", "CA ID", "Title"])),
+    priority: "Medium",
+    assigned: normalizeText(fieldValue(item.fields, ["Assigned_x0020_To", "Assigned To"])),
+    due: normalizeText(fieldValue(item.fields, ["Due_x0020_Date", "Due Date"])),
+    status: normalizeText(fieldValue(item.fields, ["Status"], "Open")),
+    action: normalizeText(fieldValue(item.fields, ["Description"])),
+    completionDate: normalizeText(fieldValue(item.fields, ["Completion_x0020_Date", "Completion Date"])),
+    completionNotes: normalizeText(fieldValue(item.fields, ["Evidence_x002f_Notes", "Evidence/Notes"])),
+    evidencePresent: normalizeText(fieldValue(item.fields, ["Status_x0020_Auto_x003f_", "Status Auto?"])) === "Yes" ? "Yes" : "No",
+    evidenceDescription: normalizeText(fieldValue(item.fields, ["Evidence_x002f_Notes", "Evidence/Notes"])),
+    evidenceAddedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    evidenceDateAdded: normalizeText(fieldValue(item.fields, ["Modified"])).slice(0, 10),
+    verifiedBy: "",
+    escalation: normalizeText(fieldValue(item.fields, ["Escalation_x0020_Notes", "Escalation Notes"])),
+    createdDate: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    sourceDate: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    locked: false
+  }));
+}
+function mapIncidentCounters(items){
+  return items.reduce((acc, item) => {
+    const company = normalizeText(fieldValue(item.fields, ["Company"]));
+    const year = normalizeText(fieldValue(item.fields, ["Year"]));
+    const nextCounter = Number(fieldValue(item.fields, ["Next_x0020_Counter", "Next Counter"], 0) || 0);
+    if(company && year) acc[`${company}||${year}`] = nextCounter;
+    return acc;
+  }, {});
+}
+async function loadDB(){
+  if(!hasGraphRuntimeConfig()) return loadCachedDB();
+  try {
+    const [people, training, documents, manual, cor, corOverrides, toolbox, vehicleInspections, inspections, incidents, hazard, committee, correctiveActions, incidentCounters] = await Promise.all([
+      getListItems("people"),
+      getListItems("training"),
+      getListItems("documents"),
+      getListItems("manual"),
+      getListItems("cor"),
+      getListItems("corOverrides"),
+      getListItems("toolbox"),
+      getListItems("vehicleInspections"),
+      getListItems("inspections"),
+      getListItems("incidents"),
+      getListItems("hazard"),
+      getListItems("committee"),
+      getListItems("correctiveActions"),
+      getListItems("incidentCounters")
+    ]);
+    const hydrated = {
+      ...deepCopy(defaultDB),
+      state: {
+        ...deepCopy(defaultDB.state),
+        ...loadCachedDB().state,
+        lastImport: new Date().toISOString().slice(0, 10)
+      },
+      people: mapPeople(people),
+      training: mapTraining(training),
+      documents: mapDocuments(documents),
+      manual: mapManual(manual),
+      cor: mapCor(cor),
+      corOverrides: mapCorOverrides(corOverrides),
+      toolbox: mapToolbox(toolbox),
+      vehicleInspections: mapVehicle(vehicleInspections),
+      inspections: mapInspections(inspections),
+      incidents: mapIncidents(incidents),
+      hazard: mapHazard(hazard),
+      committee: mapCommittee(committee),
+      correctiveActions: mapCorrectiveActions(correctiveActions),
+      incidentCounters: mapIncidentCounters(incidentCounters)
+    };
+    console.info("SharePoint hydration counts", {
+      people: hydrated.people.length,
+      training: hydrated.training.length,
+      documents: hydrated.documents.length,
+      manual: hydrated.manual.length,
+      cor: hydrated.cor.length,
+      toolbox: hydrated.toolbox.length,
+      vehicleInspections: hydrated.vehicleInspections.length,
+      inspections: hydrated.inspections.length,
+      incidents: hydrated.incidents.length,
+      hazard: hydrated.hazard.length,
+      committee: hydrated.committee.length,
+      correctiveActions: hydrated.correctiveActions.length
+    });
+    return hydrated;
+  } catch(e){
+    console.warn("SharePoint hydration failed. Falling back to local cache.", e);
+    return loadCachedDB();
+  }
+}
+function createStatusBanner(){
+  if(byId("readOnlyBanner")) return;
+  const banner = document.createElement("div");
+  banner.id = "readOnlyBanner";
+  banner.style.position = "fixed";
+  banner.style.top = "0";
+  banner.style.left = "0";
+  banner.style.right = "0";
+  banner.style.zIndex = "10000";
+  banner.style.padding = "10px 18px";
+  banner.style.background = "#fef3c7";
+  banner.style.color = "#7c2d12";
+  banner.style.borderBottom = "1px solid #f59e0b";
+  banner.style.fontWeight = "700";
+  banner.textContent = "Read-Only Mode: Changes are saved locally only. Sync to SharePoint is not yet enabled. Contact Vince to request sync activation.";
+  document.body.prepend(banner);
+  document.querySelector(".app").style.marginTop = "48px";
+}
+function applyReadOnlyState(){
+  if(!FEATURE_FLAGS.read_only_mode) return;
+  createStatusBanner();
+  document.querySelectorAll("button.btn:not(.nav-btn)").forEach(button => {
+    const label = (button.textContent || "").toLowerCase();
+    if(/edit|save|add|verify|refresh/.test(label)){
+      button.disabled = true;
+      button.style.opacity = "0.5";
+      button.title = "Disabled in read-only mode";
+    }
+  });
+}
+function showLoadingState(){
+  if(byId("loadingOverlay")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "loadingOverlay";
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(244,247,251,0.92)";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.zIndex = "9999";
+  overlay.innerHTML = '<div style="background:#fff;border:1px solid #dbe3ee;border-radius:16px;padding:20px 24px;box-shadow:0 8px 24px rgba(27,52,77,.08);font-weight:700;color:#163047;">Loading tracker...</div>';
+  document.body.appendChild(overlay);
+}
+function hideLoadingState(){
+  if(byId("loadingOverlay")) byId("loadingOverlay").remove();
+}
+async function storeTrainingCertificate(file){
+  if(FEATURE_FLAGS.read_only_mode || !FEATURE_FLAGS.file_upload_enabled){
+    console.info("Training certificate upload disabled in read-only mode.");
+    return { id: `local-${Date.now()}-${file.name}`, name: file.name, type: file.type || "application/octet-stream", size: file.size || 0 };
+  }
+  return { id: `pending-${Date.now()}-${file.name}`, name: file.name, type: file.type || "application/octet-stream", size: file.size || 0 };
+}
+async function openTrainingCertificate(id, name){
+  console.info("Certificate download requires Phase 2 file integration", { id, name });
+  alert("Certificate download will be enabled after file sync activation.");
+}
+async function storePortalFile(file){
+  if(FEATURE_FLAGS.read_only_mode || !FEATURE_FLAGS.file_upload_enabled){
+    console.info("Portal file upload disabled in read-only mode.");
+    return { id: `local-${Date.now()}-${file.name}`, name: file.name, type: file.type || "application/octet-stream", size: file.size || 0 };
+  }
+  return { id: `pending-${Date.now()}-${file.name}`, name: file.name, type: file.type || "application/octet-stream", size: file.size || 0 };
+}
+async function openPortalStoredFile(id, name){
+  console.info("Portal file download requires Phase 2 file integration", { id, name });
+  alert("File download will be enabled after file sync activation.");
+}
+async function bootstrapApp(){
+  showLoadingState();
+  try {
+    await loadFeatureFlags();
+    db = await loadDB();
+    persistLocalSnapshot();
+    rebuildAll();
+    applyReadOnlyState();
+  } finally {
+    hideLoadingState();
+  }
+}
 function parseDate(s){ if(!s) return null; const d=new Date(s+"T00:00:00"); return isNaN(d)?null:d; }
 function daysUntil(s){ const d=parseDate(s); if(!d) return null; const n=new Date(); const t=new Date(n.getFullYear(),n.getMonth(),n.getDate()); return Math.ceil((d-t)/86400000); }
 function statusPill(value){
@@ -894,61 +1403,6 @@ function renderTable(el, headers, rows){
   html += "</tbody>"; el.innerHTML=html;
 }
 
-const CERT_DB = "TrainingCertificateStoreV1";
-const CERT_STORE = "certs";
-
-function openCertDB(){
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(CERT_DB, 1);
-    req.onupgradeneeded = () => {
-      const dbx = req.result;
-      if(!dbx.objectStoreNames.contains(CERT_STORE)){
-        dbx.createObjectStore(CERT_STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function storeTrainingCertificate(file){
-  const dbx = await openCertDB();
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2)}_${file.name}`;
-  return new Promise((resolve, reject) => {
-    const tx = dbx.transaction(CERT_STORE, "readwrite");
-    tx.objectStore(CERT_STORE).put({
-      id,
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size || 0,
-      blob: file
-    });
-    tx.oncomplete = () => resolve({id, name:file.name, type:file.type || "application/octet-stream", size:file.size || 0});
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function openTrainingCertificate(id, name){
-  try{
-    const dbx = await openCertDB();
-    const rec = await new Promise((resolve, reject) => {
-      const tx = dbx.transaction(CERT_STORE, "readonly");
-      const req = tx.objectStore(CERT_STORE).get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-    if(!rec || !rec.blob){
-      alert("Certificate could not be opened.");
-      return;
-    }
-    const url = URL.createObjectURL(rec.blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name || rec.name || "certificate";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  } catch(e){
-    alert("Certificate open failed.");
-  }
-}
 function renderTrainingCertLinks(list){
   if(!list || !list.length) return "";
   return list.map(c => `<a href="#" onclick="openTrainingCertificate('${esc(c.id)}','${esc(c.name)}'); return false;">${esc(c.name)}</a>`).join("");
@@ -963,54 +1417,6 @@ function showSelectedTrainingCerts(inputId, previewId){
 function clearTrainingCertPicker(inputId, previewId){
   if(byId(inputId)) byId(inputId).value = "";
   if(byId(previewId)) byId(previewId).innerHTML = "No certificates selected.";
-}
-const PORTAL_FILE_DB = "PortalFieldUploadsV1";
-const PORTAL_FILE_STORE = "uploads";
-
-function openPortalFileDB(){
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(PORTAL_FILE_DB, 1);
-    req.onupgradeneeded = () => {
-      const dbx = req.result;
-      if(!dbx.objectStoreNames.contains(PORTAL_FILE_STORE)){
-        dbx.createObjectStore(PORTAL_FILE_STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function storePortalFile(file){
-  const dbx = await openPortalFileDB();
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2)}_${file.name}`;
-  return new Promise((resolve, reject) => {
-    const tx = dbx.transaction(PORTAL_FILE_STORE, "readwrite");
-    tx.objectStore(PORTAL_FILE_STORE).put({
-      id, name:file.name, type:file.type || "application/octet-stream", size:file.size || 0, blob:file
-    });
-    tx.oncomplete = () => resolve({id, name:file.name, type:file.type || "application/octet-stream", size:file.size || 0});
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function openPortalStoredFile(id, name){
-  try{
-    const dbx = await openPortalFileDB();
-    const rec = await new Promise((resolve, reject) => {
-      const tx = dbx.transaction(PORTAL_FILE_STORE, "readonly");
-      const req = tx.objectStore(PORTAL_FILE_STORE).get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-    if(!rec || !rec.blob){ alert("File could not be opened."); return; }
-    const url = URL.createObjectURL(rec.blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name || rec.name || "file";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  } catch(e){
-    alert("File open failed.");
-  }
 }
 function renderPortalFileLinks(list){
   if(!list || !list.length) return "";
@@ -2371,12 +2777,7 @@ populateCORSectionDropdown();
 buildActionBlocks("inspectionActionBlocks","inspection");
 buildActionBlocks("incidentActionBlocks","incident");
 setIncidentDefaultDue();
-applyCompanyUI();
-  populateToolboxDocumentDropdowns();
-  populateToolboxAttendeeDropdowns([]);
-  populateWitnessDropdowns([]);
-  populateEmployeeProfileDropdown();
-rebuildAll();
+bootstrapApp();
 </script>
 </body>
 </html>

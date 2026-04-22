@@ -3,13 +3,16 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "location": {
-      "value": "canadacentral"
+      "value": "eastus2"
+    },
+    "resourceGroupName": {
+      "value": "rg-hawm-safety-portal-prod-eus2-01"
     },
     "environmentName": {
       "value": "prod"
     },
     "staticWebAppName": {
-      "value": "stapp-hawm-safety-portal-prod-cca-01"
+      "value": "stapp-hawm-safety-portal-prod-eus2-01"
     },
     "actionGroupName": {
       "value": "ag-hawm-safety-portal-prod-global-01"

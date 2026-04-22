@@ -1,13 +1,13 @@
 targetScope = 'subscription'
 
 @description('Azure location for the resource group and Static Web App')
-param location string = 'canadacentral'
+param location string = 'eastus2'
 
 @description('Deployment environment name')
 param environmentName string = 'prod'
 
 @description('Resource group name for the HAWM Safety Portal')
-param resourceGroupName string = 'rg-hawm-safety-portal-prod-cca-01'
+param resourceGroupName string = 'rg-hawm-safety-portal-prod-eus2-01'
 
 @description('Static Web App resource name')
 param staticWebAppName string
@@ -29,6 +29,9 @@ param budgetAmount int
 
 @description('Alert email address for budget notifications')
 param alertEmailAddress string
+
+@description('Budget start date in ISO8601 format. Must be the first day of a month.')
+param budgetStartDate string = '2026-04-01T00:00:00Z'
 
 var tags = {
   project: 'hawm-safety-portal'
@@ -57,21 +60,38 @@ module resourceGroupStack './rg-resources.bicep' = {
   }
 }
 
-module budget 'br/public:avm/res/consumption/budget:0.4.0' = {
-  name: 'hawmSafetyPortalBudget'
-  params: {
+resource budget 'Microsoft.Consumption/budgets@2024-08-01' = {
+  name: budgetName
+  properties: {
     amount: budgetAmount
-    name: budgetName
-    contactEmails: [
-      alertEmailAddress
-    ]
-    location: location
-    resourceGroupFilter: [
-      resourceGroupName
-    ]
-    thresholds: [
-      100
-    ]
+    category: 'Cost'
+    timeGrain: 'Monthly'
+    timePeriod: {
+      startDate: budgetStartDate
+    }
+    filter: {
+      dimensions: {
+        name: 'ResourceGroupName'
+        operator: 'In'
+        values: [
+          resourceGroupName
+        ]
+      }
+    }
+    notifications: {
+      Actual_GreaterThanOrEqualTo_100: {
+        enabled: true
+        operator: 'GreaterThanOrEqualTo'
+        threshold: 100
+        thresholdType: 'Actual'
+        contactEmails: [
+          alertEmailAddress
+        ]
+        contactGroups: []
+        contactRoles: []
+        locale: 'en-us'
+      }
+    }
   }
 }
 
@@ -79,4 +99,4 @@ output resourceGroupId string = portalRg.id
 output staticWebAppResourceId string = resourceGroupStack.outputs.staticWebAppResourceId
 output staticWebAppHostname string = resourceGroupStack.outputs.staticWebAppHostname
 output actionGroupResourceId string = resourceGroupStack.outputs.actionGroupResourceId
-output budgetResourceId string = budget.outputs.resourceId
+output budgetResourceId string = budget.id
