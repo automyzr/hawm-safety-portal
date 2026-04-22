@@ -15,7 +15,7 @@
   "routes": [
     {
       "route": "/*",
-      "allowedRoles": ["hawm-safety-admin"]
+      "allowedRoles": ["authenticated"]
     }
   ],
   "responseOverrides": {
