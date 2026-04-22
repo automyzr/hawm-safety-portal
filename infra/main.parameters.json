@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "canadacentral"
+    },
+    "environmentName": {
+      "value": "prod"
+    },
+    "staticWebAppName": {
+      "value": "stapp-hawm-safety-portal-prod-cca-01"
+    },
+    "actionGroupName": {
+      "value": "ag-hawm-safety-portal-prod-global-01"
+    },
+    "actionGroupShortName": {
+      "value": "hawmsafe"
+    },
+    "metricAlertName": {
+      "value": "alert-hawm-safety-portal-availability-prod-global-01"
+    },
+    "alertEmailAddress": {
+      "value": "automation@heave-away.ca"
+    },
+    "budgetAmount": {
+      "value": 50
+    }
+  }
+}

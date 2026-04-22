@@ -1,0 +1,9 @@
+{
+  "name": "hawm-safety-portal",
+  "private": true,
+  "version": "0.0.1",
+  "description": "HAWM Safety Portal static web app packaging for Azure Static Web Apps",
+  "scripts": {
+    "start": "npx http-server . -p 4280"
+  }
+}

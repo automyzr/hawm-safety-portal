@@ -1,0 +1,8 @@
+name: hawm-safety-portal
+metadata:
+  template: hawm-safety-portal@0.0.1
+services:
+  web:
+    project: ./hawm-safety-portal
+    language: js
+    host: staticwebapp

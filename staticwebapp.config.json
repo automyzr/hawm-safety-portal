@@ -1,0 +1,29 @@
+{
+  "auth": {
+    "rolesSource": null,
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/TENANT_ID_PLACEHOLDER/v2.0",
+          "clientIdSettingName": "AZURE_CLIENT_ID",
+          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
+        },
+        "userDetailsClaim": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+      }
+    }
+  },
+  "routes": [
+    {
+      "route": "/*",
+      "allowedRoles": ["hawm-safety-admin"]
+    }
+  ],
+  "responseOverrides": {
+    "401": { "redirect": "/.auth/login/aad", "statusCode": 302 },
+    "403": { "rewrite": "/403.html", "statusCode": 403 }
+  },
+  "globalHeaders": {
+    "Cache-Control": "public, max-age=600",
+    "Content-Security-Policy": "default-src 'self' https:; script-src 'self' 'unsafe-inline' https://alcdn.msauth.net https://login.microsoftonline.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com"
+  }
+}
