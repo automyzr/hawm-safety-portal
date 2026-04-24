@@ -2209,6 +2209,80 @@ async function saveEditedVehicleDefect(){
   rebuildAll();
 }
 
+// Check truck expiry dates and auto-create CAs for expirations within 30 days
+function checkTruckExpiriesAndCreateCAs(truck, company) {
+  const TRUCK_EXPIRY_WINDOW_DAYS = 30;
+
+  const expiryFields = [
+    { field: 'insuranceExpiry', type: 'insurance' },
+    { field: 'registrationExpiry', type: 'registration' },
+    { field: 'permitExpiry', type: 'permit' }
+  ];
+
+  for (const { field, type } of expiryFields) {
+    const expiryDate = truck[field];
+
+    // Skip empty or missing fields
+    if (!expiryDate) continue;
+
+    const daysRemaining = daysUntil(expiryDate);
+
+    // Skip invalid dates
+    if (daysRemaining === null) continue;
+
+    // Only create CA if expiry is within 30 days (including past-expired)
+    if (daysRemaining <= TRUCK_EXPIRY_WINDOW_DAYS) {
+      const truckRef = truck.unit || truck.plate || "Unknown";
+
+      // Build friendly title
+      let title;
+      if (daysRemaining < 0) {
+        title = `${type.charAt(0).toUpperCase() + type.slice(1)} EXPIRED ${Math.abs(daysRemaining)} days ago for Truck ${truckRef}`;
+      } else {
+        title = `${type.charAt(0).toUpperCase() + type.slice(1)} expires in ${daysRemaining} days for Truck ${truckRef}`;
+      }
+
+      // Check for existing open CA with same (truck.id, expiryType, expiryDate)
+      const existingCA = db.correctiveActions.find(ca =>
+        ca.sourceType === "TruckExpiry" &&
+        ca.source === truck.id &&
+        ca.truckExpiryType === type &&
+        ca.due === expiryDate &&
+        ca.status === "Open"
+      );
+
+      if (!existingCA) {
+        // Create new CA
+        db.correctiveActions.push({
+          company,
+          sourceType: "TruckExpiry",
+          source: truck.id,
+          reference: truckRef,
+          priority: "High",
+          assigned: truck.person || "",
+          due: expiryDate,
+          action: title,
+          status: "Open",
+          completionDate: "",
+          completionNotes: "",
+          evidencePresent: "No",
+          evidenceDescription: "",
+          evidenceAddedBy: "",
+          evidenceDateAdded: "",
+          verifiedBy: "",
+          verifiedEffective: false,
+          escalation: "",
+          auto: true,
+          locked: false,
+          createdDate: todayISO(),
+          sourceDate: todayISO(),
+          truckExpiryType: type
+        });
+      }
+    }
+  }
+}
+
 async function addTruckProfile(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const truckId = "truck_" + Date.now();
@@ -2241,6 +2315,7 @@ async function addTruckProfile(){
     permitUploads
   });
 
+  checkTruckExpiriesAndCreateCAs(db.truckProfiles[db.truckProfiles.length - 1], company);
   clearTruckEditor();
   rebuildAll();
 }
@@ -2314,6 +2389,7 @@ async function saveEditedTruckProfile(){
     permitUploads: [...existingPermit, ...addedPermit]
   };
 
+  checkTruckExpiriesAndCreateCAs(db.truckProfiles[index], db.truckProfiles[index].company);
   clearTruckEditor();
   rebuildAll();
 }
@@ -3879,6 +3955,32 @@ buildActionBlocks("inspectionActionBlocks","inspection");
 buildActionBlocks("incidentActionBlocks","incident");
 setIncidentDefaultDue();
 bootstrapApp();
+
+// DEV: Test truck expiry CA creation
+window.TEST_TRUCK_EXPIRY_CA = () => {
+  const testTruck = {
+    id: "test_truck_" + Date.now(),
+    company: selectedCompany(),
+    unit: "TEST-UNIT-" + Math.random().toString(36).substring(7),
+    plate: "TEST999",
+    insuranceExpiry: addDays(todayISO(), 15),
+    registrationExpiry: "",
+    permitExpiry: "",
+    person: ""
+  };
+  console.log("TEST: Creating truck with insurance expiry 15 days out:", testTruck.insuranceExpiry);
+  const beforeCount = db.correctiveActions.filter(c => c.sourceType === "TruckExpiry").length;
+  checkTruckExpiriesAndCreateCAs(testTruck, testTruck.company);
+  const afterCount = db.correctiveActions.filter(c => c.sourceType === "TruckExpiry").length;
+  console.log(`TEST: CAs before: ${beforeCount}, after: ${afterCount}. Expected: +1.`);
+  if (afterCount === beforeCount + 1) {
+    console.log("✓ TEST PASS: Truck expiry CA created.");
+    return "PASS";
+  } else {
+    console.error("✗ TEST FAIL: Expected 1 new CA, got", afterCount - beforeCount);
+    return "FAIL";
+  }
+};
 </script>
 </body>
 </html>
