@@ -1158,6 +1158,32 @@ function migrateAfterImport(){
   migrateDocumentsStatusField();
 }
 function byId(id){ return document.getElementById(id); }
+function showToast(message, type = "info"){
+  const toastId = `toast_${Date.now()}`;
+  const toast = document.createElement("div");
+  toast.id = toastId;
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    background: ${type === "error" ? "#f8d7da" : type === "success" ? "#d4edda" : "#d1ecf1"};
+    color: ${type === "error" ? "#721c24" : type === "success" ? "#155724" : "#0c5460"};
+    border: 1px solid ${type === "error" ? "#f5c6cb" : type === "success" ? "#c3e6cb" : "#bee5eb"};
+    border-radius: 4px;
+    z-index: 10000;
+    font-size: 14px;
+    max-width: 400px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    const elem = document.getElementById(toastId);
+    if(elem) elem.remove();
+  }, 3000);
+}
 function aliasLegacyId(legacyId, currentId){ return document.getElementById(currentId) || document.getElementById(legacyId); }
 function esc(v){ return (v??"").toString().replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
 function normalizeText(v){ return (v ?? "").toString().trim(); }
@@ -2294,14 +2320,44 @@ function corOverrideKey(company, section){
 function getCOROverride(company, section){
   return (db.corOverrides || {})[corOverrideKey(company, section)] || null;
 }
-function saveCOROverride(){
+async function saveCOROverride(){
   const company = selectedCompany()==="All Companies" ? "All Companies" : selectedCompany();
   const section = byId("cor_override_section").value;
   const status = byId("cor_override_status").value;
   const reason = byId("cor_override_reason").value.trim();
   if(!section){ alert("Select a COR section first."); return; }
   if(!db.corOverrides) db.corOverrides = {};
-  db.corOverrides[corOverrideKey(company, section)] = {status, reason};
+  const key = corOverrideKey(company, section);
+  const oldState = db.corOverrides[key] ? JSON.parse(JSON.stringify(db.corOverrides[key])) : null;
+  db.corOverrides[key] = {status, reason};
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_corOverrides){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    rebuildAll();
+    return;
+  }
+  try {
+    const fields = {Title: key, status, reason};
+    const existing = await getListItems("corOverrides");
+    const item = existing.find(x => fieldValue(x.fields, ["Title"]) === key);
+    if(!item){
+      const result = await graphCreateItem("corOverrides", fields);
+    } else {
+      const itemId = item.id;
+      const etag = item.etag;
+      await graphUpdateItem("corOverrides", itemId, fields, etag);
+    }
+    logAuditEntry({user: "current_user", list: "corOverrides", itemId: key, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    if(oldState){
+      db.corOverrides[key] = oldState;
+    } else {
+      delete db.corOverrides[key];
+    }
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   rebuildAll();
 }
 function getTrainingGaps(){
@@ -2570,6 +2626,7 @@ async function saveEditedVehicleDefect(){
   const existing = db.vehicleInspections[index].uploads || [];
   const added = [];
   for(const file of Array.from(byId("vehicle_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+  const oldState = JSON.parse(JSON.stringify(db.vehicleInspections[index]));
   const oldDefect = db.vehicleInspections[index];
   const newDateRepaired = byId("vehicle_edit_repaired").value;
   const repairNotes = byId("vehicle_edit_repair_notes").value.trim();
@@ -2601,6 +2658,30 @@ async function saveEditedVehicleDefect(){
     }
   }
 
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_vehicleInspections){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearVehicleEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const defect = db.vehicleInspections[index];
+    const fields = {dateReported: defect.dateReported, reportedBy: defect.reportedBy, unit: defect.unit, plate: defect.plate, severity: defect.severity, outOfService: defect.outOfService, assigned: defect.assigned, defect: defect.defect, repairDue: defect.repairDue, dateRepaired: defect.dateRepaired, repairNotes: defect.repairNotes};
+    if(!defect.id){
+      const result = await graphCreateItem("vehicleInspections", fields);
+      defect.id = result.id;
+      defect.etag = result.etag;
+    } else {
+      await graphUpdateItem("vehicleInspections", defect.id, fields, defect.etag);
+    }
+    logAuditEntry({user: "current_user", list: "vehicleInspections", itemId: defect.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.vehicleInspections[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearVehicleEditor();
   rebuildAll();
 }
@@ -2752,6 +2833,7 @@ async function saveEditedTruckProfile(){
   }
 
   const existing = db.truckProfiles[index];
+  const oldState = JSON.parse(JSON.stringify(existing));
   const existingInsurance = existing.insuranceUploads || [];
   const existingRegistration = existing.registrationUploads || [];
   const existingPermit = existing.permitUploads || [];
@@ -2786,6 +2868,30 @@ async function saveEditedTruckProfile(){
   };
 
   checkTruckExpiriesAndCreateCAs(db.truckProfiles[index], db.truckProfiles[index].company);
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_truckProfiles){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearTruckEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const truck = db.truckProfiles[index];
+    const fields = {unit: truck.unit, plate: truck.plate, make: truck.make, model: truck.model, year: truck.year, vin: truck.vin, crew: truck.crew, person: truck.person, hourlyRate: truck.hourlyRate, idleHours: truck.idleHours, insuranceExpiry: truck.insuranceExpiry, registrationExpiry: truck.registrationExpiry, permitName: truck.permitName, permitExpiry: truck.permitExpiry};
+    if(!truck.id){
+      const result = await graphCreateItem("truckProfiles", fields);
+      truck.id = result.id;
+      truck.etag = result.etag;
+    } else {
+      await graphUpdateItem("truckProfiles", truck.id, fields, truck.etag);
+    }
+    logAuditEntry({user: "current_user", list: "truckProfiles", itemId: truck.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.truckProfiles[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearTruckEditor();
   rebuildAll();
 }
@@ -2857,6 +2963,7 @@ async function saveEditedLift(){
   const typeVal = byId("lift_edit_type").value.trim();
   const countVal = byId("lift_edit_count").value.trim();
   if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
+  const oldState = JSON.parse(JSON.stringify(db.lifts[index]));
   db.lifts[index] = {
     ...db.lifts[index],
     date: dateVal,
@@ -2865,6 +2972,30 @@ async function saveEditedLift(){
     liftType: typeVal,
     liftCount: Number(countVal)
   };
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_lifts){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearLiftEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const lift = db.lifts[index];
+    const fields = {date: lift.date, operator: lift.operator, unit: lift.unit, liftType: lift.liftType, liftCount: lift.liftCount};
+    if(!lift.id){
+      const result = await graphCreateItem("lifts", fields);
+      lift.id = result.id;
+      lift.etag = result.etag;
+    } else {
+      await graphUpdateItem("lifts", lift.id, fields, lift.etag);
+    }
+    logAuditEntry({user: "current_user", list: "lifts", itemId: lift.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.lifts[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearLiftEditor();
   rebuildAll();
 }
@@ -3018,11 +3149,35 @@ async function editMaintLocation(index){
 async function saveEditedMaintLocation(){
   const index=Number(byId("maintLoc_edit_index").value);
   if(Number.isNaN(index)||!db.maintenanceLocations[index]){alert("Select a location first.");return;}
+  const oldState = JSON.parse(JSON.stringify(db.maintenanceLocations[index]));
   const loc=db.maintenanceLocations[index];
   loc.name=byId("maintLoc_edit_name").value||"";
   loc.address=byId("maintLoc_edit_address").value||"";
   loc.hourlyLabourRate=Number(byId("maintLoc_edit_hourlyLabourRate").value)||0;
   loc.dealer=byId("maintLoc_edit_dealer").checked;
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_maintenanceLocations){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearMaintLocEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const fields = {Title: loc.name, address: loc.address, hourlyLabourRate: loc.hourlyLabourRate, dealer: loc.dealer};
+    if(!loc.id){
+      const result = await graphCreateItem("maintenanceLocations", fields);
+      loc.id = result.id;
+      loc.etag = result.etag;
+    } else {
+      await graphUpdateItem("maintenanceLocations", loc.id, fields, loc.etag);
+    }
+    logAuditEntry({user: "current_user", list: "maintenanceLocations", itemId: loc.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.maintenanceLocations[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearMaintLocEditor();
   rebuildAll();
 }
@@ -3149,6 +3304,7 @@ async function editMaintRecord(index){
 async function saveEditedMaintRecord(){
   const index=Number(byId("maint_edit_index").value);
   if(Number.isNaN(index)||!db.maintenanceRecords[index]){alert("Select a record first.");return;}
+  const oldState = JSON.parse(JSON.stringify(db.maintenanceRecords[index]));
   const rec=db.maintenanceRecords[index];
   rec.truck=byId("maint_edit_truck").value||"";
   rec.assignedTo=byId("maint_edit_assignedTo").value||"";
@@ -3178,6 +3334,29 @@ async function saveEditedMaintRecord(){
   const metrics=computeMaintMetrics(rec,truckProfile,maintLocation);
   Object.assign(rec,metrics);
 
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_maintenanceRecords){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearMaintRecordEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const fields = {truck: rec.truck, assignedTo: rec.assignedTo, location: rec.location, type: rec.type, linkedIncident: rec.linkedIncident, issueCategory: rec.issueCategory, description: rec.description, downtimeStart: rec.downtimeStart, downtimeEnd: rec.downtimeEnd, repairStart: rec.repairStart, repairEnd: rec.repairEnd, partsOrdered: rec.partsOrdered, partsArrived: rec.partsArrived, invoiceNumber: rec.invoiceNumber, invoiceDate: rec.invoiceDate, invoicePartsCost: rec.invoicePartsCost, invoiceLabourCost: rec.invoiceLabourCost, coolant: rec.coolant, hydraulicOil: rec.hydraulicOil, motorOil: rec.motorOil};
+    if(!rec.id){
+      const result = await graphCreateItem("maintenanceRecords", fields);
+      rec.id = result.id;
+      rec.etag = result.etag;
+    } else {
+      await graphUpdateItem("maintenanceRecords", rec.id, fields, rec.etag);
+    }
+    logAuditEntry({user: "current_user", list: "maintenanceRecords", itemId: rec.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.maintenanceRecords[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearMaintRecordEditor();
   rebuildAll();
 }
@@ -3343,6 +3522,7 @@ async function saveEditedToolbox(){
   const existing = db.toolbox[index].uploads || [];
   const added = [];
   for(const file of Array.from(byId("toolbox_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+  const oldState = JSON.parse(JSON.stringify(db.toolbox[index]));
   db.toolbox[index] = {
     ...db.toolbox[index],
     date: byId("toolbox_edit_date").value,
@@ -3356,6 +3536,30 @@ async function saveEditedToolbox(){
   };
   if(db.toolbox[index].documentReviewed === "Yes" && db.toolbox[index].documentIndex !== ""){
     applyToolboxReviewToDocument(db.toolbox[index].company, db.toolbox[index].documentIndex, db.toolbox[index].date);
+  }
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_toolbox){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearToolboxEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const toolbox = db.toolbox[index];
+    const fields = {date: toolbox.date, presenter: toolbox.presenter, topic: toolbox.topic, attendees: toolbox.attendees.join(";"), notes: toolbox.notes, documentReviewed: toolbox.documentReviewed, documentIndex: toolbox.documentIndex};
+    if(!toolbox.id){
+      const result = await graphCreateItem("toolbox", fields);
+      toolbox.id = result.id;
+      toolbox.etag = result.etag;
+    } else {
+      await graphUpdateItem("toolbox", toolbox.id, fields, toolbox.etag);
+    }
+    logAuditEntry({user: "current_user", list: "toolbox", itemId: toolbox.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.toolbox[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
   }
   clearToolboxEditor();
   rebuildAll();
@@ -3674,7 +3878,7 @@ function clearPersonEditor(){
   byId("person_edit_status").value = "Active";
   renderEditRolePicker([]);
 }
-function saveEditedPerson(){
+async function saveEditedPerson(){
   const index = Number(byId("person_edit_index").value);
   if(Number.isNaN(index) || !db.people[index]){
     alert("Select a person row first.");
@@ -3685,6 +3889,7 @@ function saveEditedPerson(){
     alert("Select at least one role.");
     return;
   }
+  const oldState = JSON.parse(JSON.stringify(db.people[index]));
   db.people[index] = {
     ...db.people[index],
     name: byId("person_edit_name").value.trim(),
@@ -3692,8 +3897,34 @@ function saveEditedPerson(){
     status: byId("person_edit_status").value,
     roles
   };
-  clearPersonEditor();
-  rebuildAll();
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_people){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearPersonEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const person = db.people[index];
+    if(!person.id){
+      const fields = {Title: person.name, department: person.department, status: person.status, roles: person.roles.join(";")};
+      const result = await graphCreateItem("people", fields);
+      person.id = result.id;
+      person.etag = result.etag;
+    } else {
+      const fields = {Title: person.name, department: person.department, status: person.status, roles: person.roles.join(";")};
+      await graphUpdateItem("people", person.id, fields, person.etag);
+      logAuditEntry({user: "current_user", list: "people", itemId: person.id, action: "UPDATE", delta: fields});
+    }
+    showToast("✓ Saved to SharePoint", "success");
+    clearPersonEditor();
+    rebuildAll();
+  } catch(err){
+    console.error("Write error:", err);
+    db.people[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+    rebuildAll();
+  }
 }
 
 function editTraining(index){
@@ -3742,6 +3973,7 @@ async function saveEditedTraining(){
     for(const file of Array.from((byId("training_edit_cert_files")||{}).files || [])){
       added.push(await storeTrainingCertificate(file));
     }
+    const oldState = JSON.parse(JSON.stringify(db.training[index]));
     db.training[index] = {
       ...db.training[index],
       employee: ((byId("training_edit_employee")||{}).value||"").trim(),
@@ -3756,6 +3988,30 @@ async function saveEditedTraining(){
       dateAdded: (byId("training_edit_doc_date")||{}).value,
       certificates: [...existing, ...added]
     };
+    persistLocalSnapshot();
+    if(!FEATURE_FLAGS.write_enabled_training){
+      showToast("Read-only mode. Changes saved locally only.", "info");
+      clearTrainingEditor();
+      rebuildAll();
+      return;
+    }
+    try {
+      const training = db.training[index];
+      const fields = {employee: training.employee, course: training.course, status: training.status, complete: training.complete, expiry: training.expiry, notes: training.notes, documentPresent: training.documentPresent, documentName: training.documentName, addedBy: training.addedBy, dateAdded: training.dateAdded};
+      if(!training.id){
+        const result = await graphCreateItem("training", fields);
+        training.id = result.id;
+        training.etag = result.etag;
+      } else {
+        await graphUpdateItem("training", training.id, fields, training.etag);
+      }
+      logAuditEntry({user: "current_user", list: "training", itemId: training.id, action: "UPDATE", delta: fields});
+      showToast("✓ Saved to SharePoint", "success");
+    } catch(err){
+      console.error("Write error:", err);
+      db.training[index] = oldState;
+      showToast(`Sync failed: ${err.message || err.code}`, "error");
+    }
     clearTrainingEditor();
     rebuildAll();
   } catch(e){ console.error("saveEditedTraining error:",e); alert("Failed to save training: "+e.message); }
@@ -3826,7 +4082,7 @@ function clearDocumentEditor(){
   byId("doc_edit_file_present").value = "No";
   byId("doc_edit_cor").value = "";
 }
-function saveEditedDocument(){
+async function saveEditedDocument(){
   const index = Number(byId("doc_edit_index").value);
   if(Number.isNaN(index) || !db.documents[index]){
     alert("Select a document row first.");
@@ -3835,6 +4091,7 @@ function saveEditedDocument(){
   const company = db.documents[index].company;
   const docName = byId("doc_edit_name").value.trim();
   const status = byId("doc_edit_status").value || "Active";
+  const oldState = JSON.parse(JSON.stringify(db.documents[index]));
   // Archive lifecycle: status + archivedDate; legacy default Active; adding/activating same-name archives older
   if(status === "Active"){
     db.documents.forEach((d, i) => {
@@ -3864,6 +4121,30 @@ function saveEditedDocument(){
     addedBy: byId("doc_edit_file_by").value.trim(),
     dateAdded: byId("doc_edit_file_date").value
   };
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_documents){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearDocumentEditor();
+    rebuildAll();
+    return;
+  }
+  try {
+    const doc = db.documents[index];
+    const fields = {Title: doc.name, number: doc.number, revision: doc.revision, owner: doc.owner, type: doc.type, effective: doc.effective, lastReviewed: doc.lastReviewed, review: doc.review, manual: doc.manual, cor: doc.cor, status: doc.status, archivedDate: doc.archivedDate, notes: doc.notes, filePresent: doc.filePresent, fileName: doc.fileName, addedBy: doc.addedBy, dateAdded: doc.dateAdded};
+    if(!doc.id){
+      const result = await graphCreateItem("documents", fields);
+      doc.id = result.id;
+      doc.etag = result.etag;
+    } else {
+      await graphUpdateItem("documents", doc.id, fields, doc.etag);
+    }
+    logAuditEntry({user: "current_user", list: "documents", itemId: doc.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error("Write error:", err);
+    db.documents[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearDocumentEditor();
   rebuildAll();
 }
@@ -3994,10 +4275,43 @@ function clearInspectionEditor(){
 }
 async function saveEditedInspection(){
   const index = Number(byId("insp_edit_index").value); if(Number.isNaN(index) || !db.inspections[index]){ alert("Select an inspection row first."); return; }
+  const oldState = JSON.parse(JSON.stringify(db.inspections[index]));
   const existing = db.inspections[index].uploads || [];
   const added = [];
   for(const file of Array.from(byId("insp_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
   db.inspections[index] = {...db.inspections[index], date:byId("insp_edit_date").value, crew:byId("insp_edit_crew").value.trim(), location:byId("insp_edit_location").value.trim(), inspector:byId("insp_edit_inspector").value.trim(), notes:byId("insp_edit_notes").value, proofPresent:byId("insp_edit_proof_present").value, proofDescription:byId("insp_edit_proof_desc").value.trim(), addedBy:byId("insp_edit_proof_by").value.trim(), dateAdded:byId("insp_edit_proof_date").value, uploads:[...existing, ...added]};
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_inspections){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearInspectionEditor(); rebuildAll();
+    return;
+  }
+  try {
+    const inspection = db.inspections[index];
+    const fields = {
+      date: inspection.date,
+      crew: inspection.crew,
+      location: inspection.location,
+      inspector: inspection.inspector,
+      notes: inspection.notes,
+      proofPresent: inspection.proofPresent,
+      proofDescription: inspection.proofDescription,
+      addedBy: inspection.addedBy,
+      dateAdded: inspection.dateAdded
+    };
+    if(!inspection.id){
+      const result = await graphCreateItem("inspections", fields);
+      inspection.id = result.id;
+      inspection.etag = result.etag;
+    } else {
+      await graphUpdateItem("inspections", inspection.id, fields, inspection.etag);
+    }
+    logAuditEntry({user: currentUser, list: "inspections", itemId: inspection.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    db.inspections[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearInspectionEditor(); rebuildAll();
 }
 
@@ -4041,6 +4355,7 @@ function clearIncidentEditor(){
 async function saveEditedIncident(){
   try{
     const index = Number((byId("incident_edit_index")||{}).value); if(Number.isNaN(index) || !db.incidents[index]){ alert("Select an incident row first."); return; }
+    const oldState = JSON.parse(JSON.stringify(db.incidents[index]));
     const existing = db.incidents[index].uploads || [];
     const added = [];
     for(const file of Array.from((byId("incident_edit_upload_files")||{}).files || [])){ added.push(await storePortalFile(file)); }
@@ -4067,8 +4382,51 @@ async function saveEditedIncident(){
       dateAdded:(byId("incident_edit_proof_date")||{}).value,
       uploads:[...existing, ...added]
     };
+    persistLocalSnapshot();
+    if(!FEATURE_FLAGS.write_enabled_incidents){
+      showToast("Read-only mode. Changes saved locally only.", "info");
+      clearIncidentEditor(); rebuildAll();
+      return;
+    }
+    const incident = db.incidents[index];
+    const fields = {
+      date: incident.date,
+      incidentNumber: incident.incidentNumber,
+      employee: incident.employee,
+      location: incident.location,
+      unit: incident.unit,
+      severity: incident.severity,
+      liftType: incident.liftType,
+      description: incident.description,
+      photosPresent: incident.photosPresent,
+      videoPresent: incident.videoPresent,
+      proofDescription: incident.proofDescription,
+      immediateCause: (incident.immediateCause || []).join(", "),
+      immediateCauseNotes: incident.immediateCauseNotes,
+      basicCause: (incident.basicCause || []).join(", "),
+      basicCauseNotes: incident.basicCauseNotes,
+      issueTags: (incident.issueTags || []).join(", "),
+      addedBy: incident.addedBy,
+      dateAdded: incident.dateAdded
+    };
+    if(!incident.id){
+      const result = await graphCreateItem("incidents", fields);
+      incident.id = result.id;
+      incident.etag = result.etag;
+    } else {
+      await graphUpdateItem("incidents", incident.id, fields, incident.etag);
+    }
+    logAuditEntry({user: currentUser, list: "incidents", itemId: incident.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
     clearIncidentEditor(); rebuildAll();
-  } catch(e){ console.error("saveEditedIncident error:",e); alert("Failed to save incident: "+e.message); }
+  } catch(e){
+    const index = Number((byId("incident_edit_index")||{}).value);
+    if(db.incidents[index]){
+      db.incidents[index] = oldState;
+    }
+    showToast(`Sync failed: ${e.message || e.code}`, "error");
+    clearIncidentEditor(); rebuildAll();
+  }
 }
 
 function editHazard(index){
@@ -4095,11 +4453,45 @@ function clearHazardEditor(){
 }
 async function saveEditedHazard(){
   const index = Number(byId("hazard_edit_index").value); if(Number.isNaN(index) || !db.hazard[index]){ alert("Select a hazard row first."); return; }
+  const oldState = JSON.parse(JSON.stringify(db.hazard[index]));
   const existing = db.hazard[index].uploads || [];
   const added = [];
   for(const file of Array.from(byId("hazard_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
   db.hazard[index] = {...db.hazard[index], date:byId("hazard_edit_date").value, task:byId("hazard_edit_task").value.trim(), location:byId("hazard_edit_location").value.trim(), leader:byId("hazard_edit_leader").value.trim(), hazards:byId("hazard_edit_hazards").value, controls:byId("hazard_edit_controls").value, proofPresent:byId("hazard_edit_proof_present").value, proofDescription:byId("hazard_edit_proof_desc").value.trim(), addedBy:byId("hazard_edit_proof_by").value.trim(), dateAdded:byId("hazard_edit_proof_date").value, uploads:[...existing, ...added]};
-  clearHazardEditor(); saveDB(); renderAll();
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_hazards){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearHazardEditor(); rebuildAll();
+    return;
+  }
+  try {
+    const hazard = db.hazard[index];
+    const fields = {
+      date: hazard.date,
+      task: hazard.task,
+      location: hazard.location,
+      leader: hazard.leader,
+      hazards: hazard.hazards,
+      controls: hazard.controls,
+      proofPresent: hazard.proofPresent,
+      proofDescription: hazard.proofDescription,
+      addedBy: hazard.addedBy,
+      dateAdded: hazard.dateAdded
+    };
+    if(!hazard.id){
+      const result = await graphCreateItem("hazard", fields);
+      hazard.id = result.id;
+      hazard.etag = result.etag;
+    } else {
+      await graphUpdateItem("hazard", hazard.id, fields, hazard.etag);
+    }
+    logAuditEntry({user: currentUser, list: "hazard", itemId: hazard.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    db.hazard[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
+  clearHazardEditor(); rebuildAll();
 }
 
 function editCommittee(index){
@@ -4124,10 +4516,42 @@ function clearCommitteeEditor(){
 }
 async function saveEditedCommittee(){
   const index = Number(byId("committee_edit_index").value); if(Number.isNaN(index) || !db.committee[index]){ alert("Select a WHSR / Committee row first."); return; }
+  const oldState = JSON.parse(JSON.stringify(db.committee[index]));
   const existing = db.committee[index].uploads || [];
   const added = [];
   for(const file of Array.from(byId("committee_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
   db.committee[index] = {...db.committee[index], name:byId("committee_edit_name").value.trim(), role:byId("committee_edit_role").value.trim(), due:byId("committee_edit_due").value, notes:byId("committee_edit_notes").value, proofPresent:byId("committee_edit_proof_present").value, proofDescription:byId("committee_edit_proof_desc").value.trim(), addedBy:byId("committee_edit_proof_by").value.trim(), dateAdded:byId("committee_edit_proof_date").value, uploads:[...existing, ...added]};
+  persistLocalSnapshot();
+  if(!FEATURE_FLAGS.write_enabled_committee){
+    showToast("Read-only mode. Changes saved locally only.", "info");
+    clearCommitteeEditor(); rebuildAll();
+    return;
+  }
+  try {
+    const committee = db.committee[index];
+    const fields = {
+      name: committee.name,
+      role: committee.role,
+      due: committee.due,
+      notes: committee.notes,
+      proofPresent: committee.proofPresent,
+      proofDescription: committee.proofDescription,
+      addedBy: committee.addedBy,
+      dateAdded: committee.dateAdded
+    };
+    if(!committee.id){
+      const result = await graphCreateItem("committee", fields);
+      committee.id = result.id;
+      committee.etag = result.etag;
+    } else {
+      await graphUpdateItem("committee", committee.id, fields, committee.etag);
+    }
+    logAuditEntry({user: currentUser, list: "committee", itemId: committee.id, action: "UPDATE", delta: fields});
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    db.committee[index] = oldState;
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
   clearCommitteeEditor(); rebuildAll();
 }
 
