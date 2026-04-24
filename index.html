@@ -2063,6 +2063,94 @@ async function openPortalStoredFile(id, name){
   console.info("Portal file download requires Phase 2 file integration", { id, name });
   alert("File download will be enabled after file sync activation.");
 }
+async function runMigration(){
+  try {
+    if(!hasGraphRuntimeConfig()){
+      console.log("Migration skipped: Graph runtime config not available (read-only mode).");
+      return;
+    }
+    const configItems = await getListItems("_Config");
+    const migrationCompleteRow = configItems.find(item => item.fields?.Title === "migration_complete");
+    if(migrationCompleteRow && migrationCompleteRow.fields?.Value === "true"){
+      console.log("Migration skipped: migration_complete marker found in _Config.");
+      return;
+    }
+    const localDbJson = localStorage.getItem(DB_KEY);
+    if(!localDbJson){
+      console.log("Migration skipped: no local database found.");
+      return;
+    }
+    let localDb;
+    try {
+      localDb = JSON.parse(localDbJson);
+    } catch(e){
+      console.warn("Migration skipped: local database JSON is malformed.", e);
+      return;
+    }
+    if(!localDb || typeof localDb !== "object"){
+      console.log("Migration skipped: local database is empty or invalid.");
+      return;
+    }
+    let migratedCount = 0;
+    const failedItems = [];
+    const entityMappings = {
+      people: "people",
+      training: "training",
+      documents: "documents",
+      manual: "manual",
+      cor: "cor",
+      corOverrides: "corOverrides",
+      toolbox: "toolbox",
+      vehicleInspections: "vehicleInspections",
+      inspections: "inspections",
+      incidents: "incidents",
+      hazard: "hazard",
+      committee: "committee",
+      correctiveActions: "correctiveActions",
+      truckProfiles: "truckProfiles",
+      maintenanceLocations: "maintenanceLocations",
+      maintenanceRecords: "maintenanceRecords",
+      lifts: "lifts"
+    };
+    for(const [entityKey, listSlug] of Object.entries(entityMappings)){
+      const localItems = localDb[entityKey];
+      if(!Array.isArray(localItems) || localItems.length === 0) continue;
+      const spItems = db[entityKey] || [];
+      const spIds = new Set(spItems.map(item => item.id));
+      for(const item of localItems){
+        if(!item.id || spIds.has(item.id)){
+          console.log(`Migration: skipping ${entityKey} item (already in SP or no ID)`, item);
+          continue;
+        }
+        try {
+          const fields = { ...item };
+          delete fields.id;
+          const result = await graphCreateItem(listSlug, fields);
+          migratedCount++;
+          console.log(`Migrated 1 item: ${entityKey} ${item.id}`);
+        } catch(e){
+          failedItems.push({ entity: entityKey, id: item.id, error: e.message });
+          console.warn(`Failed to migrate ${entityKey} ${item.id}:`, e);
+        }
+      }
+    }
+    if(failedItems.length > 0){
+      console.warn(`Migration partially complete: ${migratedCount} items migrated, ${failedItems.length} failed.`);
+      showToast(`⚠ Migration partially complete (${migratedCount} items, ${failedItems.length} failed). Contact admin.`, "error");
+    } else {
+      showToast(`✓ Migrated ${migratedCount} items to SharePoint`, "success");
+    }
+    await graphCreateItem("_Config", {
+      Title: "migration_complete",
+      Value: "true",
+      migratedCount: migratedCount,
+      timestamp: new Date().toISOString()
+    });
+    console.log("Migration complete marker written to _Config.");
+  } catch(e){
+    console.error("Migration failed:", e);
+  }
+}
 async function bootstrapApp(){
   showLoadingState();
   try {
@@ -2075,6 +2163,7 @@ async function bootstrapApp(){
       if(!db.committee) db.committee = [];
       migrateDocumentsStatusField();
       persistLocalSnapshot();
+      await runMigration();
       rebuildAll();
       applyReadOnlyState();
     } catch(e) {
