@@ -1511,10 +1511,70 @@ function mapIncidentCounters(items){
     return acc;
   }, {});
 }
+function mapTruckProfiles(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    unit: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
+    plate: "",
+    year: normalizeText(fieldValue(item.fields, ["Year"])),
+    make: normalizeText(fieldValue(item.fields, ["Make"])),
+    model: normalizeText(fieldValue(item.fields, ["Model"])),
+    capacity: normalizeText(fieldValue(item.fields, ["Capacity_x0020_Tons", "Capacity Tons"])),
+    type: normalizeText(fieldValue(item.fields, ["Service_x002f_Lift_x0020_Type", "Service/Lift Type"])),
+    lastService: normalizeText(fieldValue(item.fields, ["Last_x0020_Service_x0020_Date", "Last Service Date"])),
+    nextService: normalizeText(fieldValue(item.fields, ["Next_x0020_Service_x0020_Due", "Next Service Due"])),
+    daysToService: normalizeText(fieldValue(item.fields, ["Days_x0020_to_x0020_Service", "Days to Service"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"])),
+    assignedPerson: "",
+    hourlyRate: "",
+    insuranceExpiry: "",
+    registrationExpiry: "",
+    permitExpiry: ""
+  }));
+}
+function mapMaintenanceLocations(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    name: normalizeText(fieldValue(item.fields, ["Location_x0020_Name", "Location Name"])),
+    address: normalizeText(fieldValue(item.fields, ["Address"])),
+    contact: normalizeText(fieldValue(item.fields, ["Contact"])),
+    phone: normalizeText(fieldValue(item.fields, ["Phone"])),
+    email: normalizeText(fieldValue(item.fields, ["Email"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"]))
+  }));
+}
+function mapMaintenanceRecords(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    truckId: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
+    serviceDate: normalizeText(fieldValue(item.fields, ["Service_x0020_Date", "Service Date"])),
+    serviceType: normalizeText(fieldValue(item.fields, ["Service_x0020_Type", "Service Type"])),
+    serviceProvider: normalizeText(fieldValue(item.fields, ["Service_x0020_Provider", "Service Provider"])),
+    technician: normalizeText(fieldValue(item.fields, ["Technician"])),
+    cost: normalizeText(fieldValue(item.fields, ["Cost"])),
+    partReplaced: normalizeText(fieldValue(item.fields, ["Parts_x0020_Replaced", "Parts Replaced"])),
+    nextServiceDue: normalizeText(fieldValue(item.fields, ["Next_x0020_Service_x0020_Due", "Next Service Due"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"]))
+  }));
+}
+function mapLifts(items){
+  return items.map(item => ({
+    company: normalizeText(fieldValue(item.fields, ["Company"])),
+    liftId: normalizeText(fieldValue(item.fields, ["Lift_x0020_ID", "Lift ID"])),
+    liftType: normalizeText(fieldValue(item.fields, ["Lift_x0020_Type", "Lift Type"])),
+    capacity: normalizeText(fieldValue(item.fields, ["Capacity_x0020_Tons", "Capacity Tons"])),
+    location: normalizeText(fieldValue(item.fields, ["Location"])),
+    lastInspected: normalizeText(fieldValue(item.fields, ["Last_x0020_Inspected", "Last Inspected"])),
+    inspectionIntervalDays: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Interval_x0020_Days", "Inspection Interval Days"])),
+    nextInspectionDue: normalizeText(fieldValue(item.fields, ["Next_x0020_Inspection_x0020_Due", "Next Inspection Due"])),
+    certification: normalizeText(fieldValue(item.fields, ["Certification"])),
+    notes: normalizeText(fieldValue(item.fields, ["Notes"]))
+  }));
+}
 async function loadDB(){
   if(!hasGraphRuntimeConfig()) return loadCachedDB();
   try {
-    const [people, training, documents, manual, cor, corOverrides, toolbox, vehicleInspections, inspections, incidents, hazard, committee, correctiveActions, incidentCounters] = await Promise.all([
+    const [people, training, documents, manual, cor, corOverrides, toolbox, vehicleInspections, inspections, incidents, hazard, committee, correctiveActions, incidentCounters, truckProfiles, maintenanceLocations, maintenanceRecords, lifts] = await Promise.all([
       getListItems("people"),
       getListItems("training"),
       getListItems("documents"),
@@ -1528,7 +1588,11 @@ async function loadDB(){
       getListItems("hazard"),
       getListItems("committee"),
       getListItems("correctiveActions"),
-      getListItems("incidentCounters")
+      getListItems("incidentCounters"),
+      getListItems("truckProfiles"),
+      getListItems("maintenanceLocations"),
+      getListItems("maintenanceRecords"),
+      getListItems("lifts")
     ]);
     const hydrated = {
       ...deepCopy(defaultDB),
@@ -1550,7 +1614,11 @@ async function loadDB(){
       hazard: mapHazard(hazard),
       committee: mapCommittee(committee),
       correctiveActions: mapCorrectiveActions(correctiveActions),
-      incidentCounters: mapIncidentCounters(incidentCounters)
+      incidentCounters: mapIncidentCounters(incidentCounters),
+      truckProfiles: mapTruckProfiles(truckProfiles),
+      maintenanceLocations: mapMaintenanceLocations(maintenanceLocations),
+      maintenanceRecords: mapMaintenanceRecords(maintenanceRecords),
+      lifts: mapLifts(lifts)
     };
     console.info("SharePoint hydration counts", {
       people: hydrated.people.length,
@@ -1564,7 +1632,11 @@ async function loadDB(){
       incidents: hydrated.incidents.length,
       hazard: hydrated.hazard.length,
       committee: hydrated.committee.length,
-      correctiveActions: hydrated.correctiveActions.length
+      correctiveActions: hydrated.correctiveActions.length,
+      truckProfiles: hydrated.truckProfiles.length,
+      maintenanceLocations: hydrated.maintenanceLocations.length,
+      maintenanceRecords: hydrated.maintenanceRecords.length,
+      lifts: hydrated.lifts.length
     });
     return hydrated;
   } catch(e){
