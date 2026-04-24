@@ -1269,6 +1269,330 @@ async function getListItems(listName){
   const result = await graphCall(`/sites/${siteId}/lists/${listId}/items?expand=fields&$top=5000`);
   return result.value || [];
 }
+async function exponentialBackoff(attempt, maxRetries=4){
+  const baseDelay = 1000 * Math.pow(2, attempt);
+  const jitter = baseDelay * 0.2 * Math.random();
+  const delay = baseDelay + jitter;
+  await new Promise(resolve => setTimeout(resolve, delay));
+}
+async function graphCreateItem(listSlug, fields){
+  let attempt = 0;
+  const maxRetries = 4;
+  while(attempt < maxRetries){
+    try {
+      const siteId = await getGraphSiteId();
+      const listId = graphListIdCache.has(listSlug) ? graphListIdCache.get(listSlug) : await getGraphListId(listSlug);
+      const token = await getGraphToken();
+      const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ fields })
+      });
+      if(response.status === 401){
+        console.log("Create: 401 Unauthorized. Refreshing token and retrying...");
+        const newToken = await getGraphToken();
+        const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${newToken}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({ fields })
+        });
+        if(retryResponse.status === 401){
+          throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
+        }
+        if(!retryResponse.ok){
+          const errorData = await retryResponse.text();
+          throw { code: `CREATE_ERROR_${retryResponse.status}`, message: errorData };
+        }
+        const data = await retryResponse.json();
+        console.log(`Create success (after auth refresh): item ${data.id}`);
+        logAuditEntry("CREATE", listSlug, data.id, fields);
+        return { id: data.id, etag: data["@odata.etag"] };
+      }
+      if(response.status === 403){
+        const msg = "Access denied to this list. Contact admin.";
+        console.error(`Create: 403 Forbidden on ${listSlug}:`, msg);
+        showToast(msg, "error");
+        throw { code: "FORBIDDEN", message: msg };
+      }
+      if(response.status === 404){
+        const msg = `List not found: ${listSlug}`;
+        console.error(`Create: 404 Not Found on ${listSlug}`);
+        throw { code: "NOT_FOUND", message: msg };
+      }
+      if(response.status === 429){
+        const retryAfter = parseInt(response.headers.get("Retry-After") || "1");
+        const delay = Math.min(retryAfter * 1000 * Math.pow(2, attempt), 8000);
+        console.log(`Create: 429 Rate Limited. Retry-After=${retryAfter}s. Backoff attempt ${attempt + 1}/${maxRetries}. Waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        attempt++;
+        continue;
+      }
+      if(response.status >= 500){
+        console.warn(`Create: ${response.status} Server Error. Retrying...`);
+        await exponentialBackoff(attempt, 4);
+        attempt++;
+        continue;
+      }
+      if(!response.ok){
+        const errorData = await response.text();
+        throw { code: `CREATE_ERROR_${response.status}`, message: errorData };
+      }
+      const data = await response.json();
+      console.log(`Create success: item ${data.id}`);
+      logAuditEntry("CREATE", listSlug, data.id, fields);
+      return { id: data.id, etag: data["@odata.etag"] };
+    } catch(error){
+      if(error.code){
+        throw error;
+      }
+      console.error(`Create attempt ${attempt + 1}/${maxRetries} failed:`, error);
+      if(attempt === maxRetries - 1){
+        throw { code: "CREATE_FAILED", message: error.message || "Failed to create item" };
+      }
+      await exponentialBackoff(attempt, 4);
+      attempt++;
+    }
+  }
+  throw { code: "CREATE_MAX_RETRIES", message: "Max retries exceeded for item creation" };
+}
+async function graphUpdateItem(listSlug, itemId, fields, etag){
+  let attempt = 0;
+  const maxRetries = 4;
+  let currentEtag = etag;
+  while(attempt < maxRetries){
+    try {
+      const siteId = await getGraphSiteId();
+      const listId = graphListIdCache.has(listSlug) ? graphListIdCache.get(listSlug) : await getGraphListId(listSlug);
+      const token = await getGraphToken();
+      const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "If-Match": currentEtag
+        },
+        body: JSON.stringify(fields)
+      });
+      if(response.status === 401){
+        console.log("Update: 401 Unauthorized. Refreshing token and retrying...");
+        const newToken = await getGraphToken();
+        const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+          method: "PATCH",
+          headers: {
+            "Authorization": `Bearer ${newToken}`,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "If-Match": currentEtag
+          },
+          body: JSON.stringify(fields)
+        });
+        if(retryResponse.status === 401){
+          throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
+        }
+        if(retryResponse.status === 412){
+          console.log("Update: 412 Precondition Failed (ETag mismatch after auth refresh). Refetching item...");
+          const itemResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${newToken}`,
+              "Accept": "application/json"
+            }
+          });
+          if(!itemResponse.ok) throw { code: "FETCH_FAILED", message: "Could not refetch item for ETag" };
+          const itemData = await itemResponse.json();
+          currentEtag = itemData["@odata.etag"];
+          console.log("Update: Retrying PATCH with refreshed ETag...");
+          const retryPatchResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+            method: "PATCH",
+            headers: {
+              "Authorization": `Bearer ${newToken}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "If-Match": currentEtag
+            },
+            body: JSON.stringify(fields)
+          });
+          if(!retryPatchResponse.ok){
+            const errorData = await retryPatchResponse.text();
+            throw { code: `UPDATE_ERROR_${retryPatchResponse.status}`, message: errorData };
+          }
+          const data = await retryPatchResponse.json();
+          console.log(`Update success (after ETag refresh): item ${itemId}`);
+          logAuditEntry("UPDATE", listSlug, itemId, fields);
+          return { id: data.id, etag: data["@odata.etag"] };
+        }
+        if(!retryResponse.ok){
+          const errorData = await retryResponse.text();
+          throw { code: `UPDATE_ERROR_${retryResponse.status}`, message: errorData };
+        }
+        const data = await retryResponse.json();
+        console.log(`Update success (after auth refresh): item ${itemId}`);
+        logAuditEntry("UPDATE", listSlug, itemId, fields);
+        return { id: data.id, etag: data["@odata.etag"] };
+      }
+      if(response.status === 412){
+        console.log(`Update: 412 Precondition Failed (ETag mismatch). Attempt ${attempt + 1}/3. Refetching item...`);
+        if(attempt >= 2){
+          throw { code: "CONFLICT", message: "Item was modified by another user. Please refresh and try again." };
+        }
+        const itemResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/json"
+          }
+        });
+        if(!itemResponse.ok) throw { code: "FETCH_FAILED", message: "Could not refetch item for ETag" };
+        const itemData = await itemResponse.json();
+        currentEtag = itemData["@odata.etag"];
+        console.log("Update: Retrying PATCH with refreshed ETag...");
+        continue;
+      }
+      if(response.status === 403){
+        const msg = "Access denied to this list. Contact admin.";
+        console.error(`Update: 403 Forbidden on ${listSlug}:`, msg);
+        showToast(msg, "error");
+        throw { code: "FORBIDDEN", message: msg };
+      }
+      if(response.status === 404){
+        const msg = `Item not found: ${itemId} in ${listSlug}`;
+        console.error(`Update: 404 Not Found`);
+        throw { code: "NOT_FOUND", message: msg };
+      }
+      if(response.status === 429){
+        const retryAfter = parseInt(response.headers.get("Retry-After") || "1");
+        const delay = Math.min(retryAfter * 1000 * Math.pow(2, attempt), 8000);
+        console.log(`Update: 429 Rate Limited. Retry-After=${retryAfter}s. Backoff attempt ${attempt + 1}/${maxRetries}. Waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        attempt++;
+        continue;
+      }
+      if(response.status >= 500){
+        console.warn(`Update: ${response.status} Server Error. Retrying...`);
+        await exponentialBackoff(attempt, 4);
+        attempt++;
+        continue;
+      }
+      if(!response.ok){
+        const errorData = await response.text();
+        throw { code: `UPDATE_ERROR_${response.status}`, message: errorData };
+      }
+      const data = await response.json();
+      console.log(`Update success: item ${itemId}`);
+      logAuditEntry("UPDATE", listSlug, itemId, fields);
+      return { id: data.id, etag: data["@odata.etag"] };
+    } catch(error){
+      if(error.code){
+        throw error;
+      }
+      console.error(`Update attempt ${attempt + 1}/${maxRetries} failed:`, error);
+      if(attempt === maxRetries - 1){
+        throw { code: "UPDATE_FAILED", message: error.message || "Failed to update item" };
+      }
+      await exponentialBackoff(attempt, 4);
+      attempt++;
+    }
+  }
+  throw { code: "UPDATE_MAX_RETRIES", message: "Max retries exceeded for item update" };
+}
+async function graphDeleteItem(listSlug, itemId, etag){
+  let attempt = 0;
+  const maxRetries = 4;
+  while(attempt < maxRetries){
+    try {
+      const siteId = await getGraphSiteId();
+      const listId = graphListIdCache.has(listSlug) ? graphListIdCache.get(listSlug) : await getGraphListId(listSlug);
+      const token = await getGraphToken();
+      const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "If-Match": etag
+        }
+      });
+      if(response.status === 204){
+        console.log(`Delete success: item ${itemId}`);
+        logAuditEntry("DELETE", listSlug, itemId, {});
+        return { deleted: true };
+      }
+      if(response.status === 401){
+        console.log("Delete: 401 Unauthorized. Refreshing token and retrying...");
+        const newToken = await getGraphToken();
+        const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${newToken}`,
+            "If-Match": etag
+          }
+        });
+        if(retryResponse.status === 204){
+          console.log(`Delete success (after auth refresh): item ${itemId}`);
+          logAuditEntry("DELETE", listSlug, itemId, {});
+          return { deleted: true };
+        }
+        if(retryResponse.status === 401){
+          throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
+        }
+        if(retryResponse.status === 404){
+          console.warn(`Delete: Item already deleted (404)`);
+          return { deleted: true };
+        }
+        if(!retryResponse.ok){
+          const errorData = await retryResponse.text();
+          throw { code: `DELETE_ERROR_${retryResponse.status}`, message: errorData };
+        }
+      }
+      if(response.status === 404){
+        console.warn(`Delete: Item already deleted or not found (404)`);
+        return { deleted: true };
+      }
+      if(response.status === 403){
+        const msg = "Access denied to this list. Contact admin.";
+        console.error(`Delete: 403 Forbidden on ${listSlug}:`, msg);
+        showToast(msg, "error");
+        throw { code: "FORBIDDEN", message: msg };
+      }
+      if(response.status === 429){
+        const retryAfter = parseInt(response.headers.get("Retry-After") || "1");
+        const delay = Math.min(retryAfter * 1000 * Math.pow(2, attempt), 8000);
+        console.log(`Delete: 429 Rate Limited. Retry-After=${retryAfter}s. Backoff attempt ${attempt + 1}/${maxRetries}. Waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        attempt++;
+        continue;
+      }
+      if(response.status >= 500){
+        console.warn(`Delete: ${response.status} Server Error. Retrying...`);
+        await exponentialBackoff(attempt, 4);
+        attempt++;
+        continue;
+      }
+      if(!response.ok){
+        const errorData = await response.text();
+        throw { code: `DELETE_ERROR_${response.status}`, message: errorData };
+      }
+    } catch(error){
+      if(error.code){
+        throw error;
+      }
+      console.error(`Delete attempt ${attempt + 1}/${maxRetries} failed:`, error);
+      if(attempt === maxRetries - 1){
+        throw { code: "DELETE_FAILED", message: error.message || "Failed to delete item" };
+      }
+      await exponentialBackoff(attempt, 4);
+      attempt++;
+    }
+  }
+  throw { code: "DELETE_MAX_RETRIES", message: "Max retries exceeded for item deletion" };
+}
 async function loadFeatureFlags(){
   if(!hasGraphRuntimeConfig()) return FEATURE_FLAGS;
   try {
