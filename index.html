@@ -4077,6 +4077,7 @@ function buildCorrectiveActions(){
           ongoing:a.ongoing||false,
           auto:true,
           locked:true,
+          status:"Open",
           createdDate:rec.date || "",
           sourceDate:rec.date || "",
           completionDate:"",
@@ -4108,6 +4109,7 @@ function buildCorrectiveActions(){
           ongoing:a.ongoing||false,
           auto:true,
           locked:true,
+          status:"Open",
           createdDate:rec.date || "",
           sourceDate:rec.date || "",
           completionDate:"",
@@ -4136,6 +4138,7 @@ function buildCorrectiveActions(){
       action:`Schedule or update ${g.course} training for ${g.employee}`,
       auto:true,
       locked:true,
+      status:"Open",
       createdDate:todayISO(),
       sourceDate:todayISO(),
       completionDate:"",
@@ -4165,6 +4168,7 @@ function buildCorrectiveActions(){
         action:`Repair vehicle defect: ${rec.defect}`,
         auto:true,
         locked:true,
+        status:"Open",
         createdDate:rec.dateReported || "",
         sourceDate:rec.dateReported || "",
         completionDate:rec.dateRepaired || "",
@@ -4193,6 +4197,7 @@ function buildCorrectiveActions(){
         action:`Review and update ${d.name}`,
         auto:true,
         locked:true,
+        status:"Open",
         createdDate:d.lastReviewed || d.effective || todayISO(),
         sourceDate:d.lastReviewed || d.effective || todayISO(),
         completionDate:"",
@@ -4967,24 +4972,16 @@ async function saveEditedCommittee(){
 
 function addManualCA(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-  db.correctiveActions.push({company, sourceType:"Manual", source:byId("ca_source").value.trim(), reference:byId("ca_reference").value.trim(), priority:byId("ca_priority").value, assigned:byId("ca_assigned").value.trim(), due:byId("ca_due").value, action:byId("ca_action").value, auto:false, locked:false, createdDate:todayISO(), sourceDate:todayISO(), completionDate:"", completionNotes:"", evidencePresent:"No", evidenceDescription:"", evidenceAddedBy:"", evidenceDateAdded:"", verifiedBy:"", verifiedEffective:false, escalation:""});
+  db.correctiveActions.push({company, sourceType:"Manual", source:byId("ca_source").value.trim(), reference:byId("ca_reference").value.trim(), priority:byId("ca_priority").value, assigned:byId("ca_assigned").value.trim(), due:byId("ca_due").value, action:byId("ca_action").value, auto:false, locked:false, status:"Open", createdDate:todayISO(), sourceDate:todayISO(), completionDate:"", completionNotes:"", evidencePresent:"No", evidenceDescription:"", evidenceAddedBy:"", evidenceDateAdded:"", verifiedBy:"", verifiedEffective:false, escalation:""});
   rebuildAll();
 }
 async function saveEditedCA(caId, updates){
   const ca = (db.correctiveActions||[]).find(c => String(c.id) === String(caId));
   if(!ca){ showToast('CA not found: '+caId, 'error'); return; }
-  const validTransitions = {
-    'Open': ['In Progress','Resolved'],
-    'In Progress': ['Resolved','Open'],
-    'Resolved': []
-  };
-  if(updates.status && updates.status !== ca.status){
-    const allowed = validTransitions[ca.status] || [];
-    if(!allowed.includes(updates.status)){
-      showToast(`Invalid CA status transition: ${ca.status} → ${updates.status}`,'error');
-      return;
-    }
-  }
+  // Default ca.status if missing (legacy CAs or auto-CAs without explicit status)
+  if(!ca.status){ ca.status = 'Open'; }
+  // No hard transition validation — codebase uses calcCAStatus() for derived statuses
+  // (Closed, Overdue, Pending Verification, Open). Persist whatever the user sets.
   const merged = Object.assign({}, ca, updates);
   const fields = {
     Title: merged.reference || `CA ${caId}`,
