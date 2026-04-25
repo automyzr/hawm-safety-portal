@@ -1250,6 +1250,10 @@ async function ensureMsalClient(){
     }
   });
   await msalClient.initialize();
+  const redirectResult = await msalClient.handleRedirectPromise();
+  if(redirectResult && redirectResult.account){
+    msalClient.setActiveAccount(redirectResult.account);
+  }
   return msalClient;
 }
 async function getGraphToken(){
@@ -1257,9 +1261,8 @@ async function getGraphToken(){
   if(!client) throw new Error("MSAL client is not configured. Set HAWM_CONFIG.clientId after app registration.");
   let account = client.getActiveAccount() || client.getAllAccounts()[0] || null;
   if(!account){
-    const loginResponse = await client.loginPopup({ scopes: HAWM_CONFIG.graphScopes });
-    account = loginResponse.account;
-    client.setActiveAccount(account);
+    await client.loginRedirect({ scopes: HAWM_CONFIG.graphScopes });
+    return null;
   }
   try {
     const tokenResponse = await client.acquireTokenSilent({
@@ -1268,11 +1271,11 @@ async function getGraphToken(){
     });
     return tokenResponse.accessToken;
   } catch(e){
-    const tokenResponse = await client.acquireTokenPopup({
+    await client.acquireTokenRedirect({
       account,
       scopes: HAWM_CONFIG.graphScopes
     });
-    return tokenResponse.accessToken;
+    return null;
   }
 }
 async function graphCall(path, options={}){
