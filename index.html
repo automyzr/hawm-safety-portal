@@ -83,6 +83,10 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
 .file-preview{margin-top:6px;padding:8px;border:1px dashed var(--line);border-radius:10px;background:#fff;font-size:12px;color:var(--muted)}
 .file-preview div{margin:3px 0}
 .attachment-list a{display:block;margin:4px 0;color:var(--brand);text-decoration:none}
+.sync-banner{display:flex;align-items:center;justify-content:center;font-weight:700}
+.sync-banner.sync-ok{background:#d1fae5;color:#065f46;border-bottom:1px solid #6ee7b7}
+.sync-banner.sync-pending{background:#fef3c7;color:#7c2d12;border-bottom:1px solid #f59e0b}
+.sync-banner.sync-failed{background:#fee2e2;color:#7f1d1d;border-bottom:1px solid #fca5a5}
 @media (max-width:1180px){.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.grid.four,.grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.grid.two,.grid.three,.grid.four,.field-grid,.role-checks{grid-template-columns:1fr}.main{padding:14px}}
 </style>
@@ -949,9 +953,24 @@ const HAWM_CONFIG = {
   ...window.__HAWM_CONFIG__
 };
 const FEATURE_FLAGS = {
-  write_enabled_incidents: false,
+  write_enabled_people: false,
   write_enabled_training: false,
   write_enabled_documents: false,
+  write_enabled_incidents: false,
+  write_enabled_toolbox: false,
+  write_enabled_vehicleInspections: false,
+  write_enabled_inspections: false,
+  write_enabled_hazard: false,
+  write_enabled_committee: false,
+  write_enabled_correctiveActions: false,
+  write_enabled_manual: false,
+  write_enabled_cor: false,
+  write_enabled_corOverrides: false,
+  write_enabled_incidentCounters: false,
+  write_enabled_truckProfiles: false,
+  write_enabled_maintenanceLocations: false,
+  write_enabled_maintenanceRecords: false,
+  write_enabled_lifts: false,
   file_upload_enabled: false,
   read_only_mode: true
 };
@@ -1294,6 +1313,26 @@ async function getListItems(listName){
   const listId = await getGraphListId(listName);
   const result = await graphCall(`/sites/${siteId}/lists/${listId}/items?expand=fields&$top=5000`);
   return result.value || [];
+}
+async function loadFeatureFlags(){
+  try {
+    const configItems = await getListItems("_Config");
+    configItems.forEach(item => {
+      const title = item.fields.Title;
+      const value = item.fields.Value;
+      if(title && value !== undefined){
+        // Convert string "true"/"false" to boolean if needed
+        if(typeof value === 'string'){
+          FEATURE_FLAGS[title] = value.toLowerCase() === 'true';
+        } else {
+          FEATURE_FLAGS[title] = !!value;
+        }
+      }
+    });
+    console.log("Feature flags loaded from _Config:", FEATURE_FLAGS);
+  } catch(error){
+    console.warn("Failed to load feature flags from _Config. Using defaults.", error);
+  }
 }
 async function exponentialBackoff(attempt, maxRetries=4){
   const baseDelay = 1000 * Math.pow(2, attempt);
@@ -2112,26 +2151,60 @@ async function loadDB(){
   }
 }
 function createStatusBanner(){
-  if(byId("readOnlyBanner")) return;
+  if(byId("syncStatusBanner")) return;
   const banner = document.createElement("div");
-  banner.id = "readOnlyBanner";
+  banner.id = "syncStatusBanner";
+  banner.className = "sync-banner";
   banner.style.position = "fixed";
   banner.style.top = "0";
   banner.style.left = "0";
   banner.style.right = "0";
   banner.style.zIndex = "10000";
   banner.style.padding = "10px 18px";
-  banner.style.background = "#fef3c7";
-  banner.style.color = "#7c2d12";
-  banner.style.borderBottom = "1px solid #f59e0b";
   banner.style.fontWeight = "700";
-  banner.textContent = "Read-Only Mode: Changes are saved locally only. Sync to SharePoint is not yet enabled. Contact Vince to request sync activation.";
   document.body.prepend(banner);
   document.querySelector(".app").style.marginTop = "48px";
 }
+
+function updateSyncBanner(state, message){
+  let existingBanner = byId("syncStatusBanner");
+  if(!existingBanner){
+    createStatusBanner();
+    existingBanner = byId("syncStatusBanner");
+  }
+
+  // Remove all sync-* classes
+  existingBanner.className = existingBanner.className.replace(/sync-\w+/g, '').trim() + ' sync-banner';
+
+  // Add appropriate state class and color
+  if(state === 'ok'){
+    existingBanner.className += ' sync-ok';
+    existingBanner.style.background = "#d1fae5";
+    existingBanner.style.color = "#065f46";
+    existingBanner.style.borderBottom = "1px solid #6ee7b7";
+  } else if(state === 'pending'){
+    existingBanner.className += ' sync-pending';
+    existingBanner.style.background = "#fef3c7";
+    existingBanner.style.color = "#7c2d12";
+    existingBanner.style.borderBottom = "1px solid #f59e0b";
+  } else if(state === 'failed'){
+    existingBanner.className += ' sync-failed';
+    existingBanner.style.background = "#fee2e2";
+    existingBanner.style.color = "#7f1d1d";
+    existingBanner.style.borderBottom = "1px solid #fca5a5";
+  }
+
+  existingBanner.textContent = message || '';
+}
 function applyReadOnlyState(){
-  if(!FEATURE_FLAGS.read_only_mode) return;
+  if(!FEATURE_FLAGS.read_only_mode){
+    // Not in read-only mode; show sync-ok banner
+    updateSyncBanner('ok', '✓ Synced to SharePoint');
+    return;
+  }
+  // In read-only mode; show pending banner
   createStatusBanner();
+  updateSyncBanner('pending', '⟳ Read-only mode active. Awaiting admin activation.');
   document.querySelectorAll("button.btn:not(.nav-btn)").forEach(button => {
     const label = (button.textContent || "").toLowerCase();
     if(/edit|save|add|verify|refresh/.test(label)){
