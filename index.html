@@ -1323,6 +1323,23 @@ async function exponentialBackoff(attempt, maxRetries=4){
   const delay = baseDelay + jitter;
   await new Promise(resolve => setTimeout(resolve, delay));
 }
+async function syncCreateToSP(slug, flagKey, entity, fields){
+  if(!FEATURE_FLAGS[flagKey]){
+    showToast("Read-only mode. Saved locally only.", "info");
+    return;
+  }
+  try {
+    const result = await graphCreateItem(slug, fields);
+    if(entity){
+      entity.id = result.id;
+      entity.etag = result.etag;
+    }
+    showToast("✓ Saved to SharePoint", "success");
+  } catch(err){
+    console.error(`Sync error on ${slug}:`, err);
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
+  }
+}
 async function graphCreateItem(listSlug, fields){
   let attempt = 0;
   const maxRetries = 4;
@@ -2879,7 +2896,7 @@ async function addVehicleDefect(){
   const defectDesc = byId("vehicle_defect").value;
   const repairDue = byId("vehicle_due").value;
 
-  db.vehicleInspections.push({
+  const defect = {
     company,
     dateReported: byId("vehicle_date_reported").value,
     reportedBy: byId("vehicle_reported_by").value,
@@ -2894,7 +2911,8 @@ async function addVehicleDefect(){
     repairNotes: byId("vehicle_repair_notes").value.trim(),
     uploads,
     caId: defectId
-  });
+  };
+  db.vehicleInspections.push(defect);
 
   // Create matching Corrective Action record
   const severityMap = {"High":"High", "Medium":"Medium", "Low":"Low"};
@@ -2929,6 +2947,8 @@ async function addVehicleDefect(){
 
   clearPortalFilePicker("vehicle_upload_files","vehicle_upload_preview");
   rebuildAll();
+  const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
+  await syncCreateToSP("vehicleInspections", "write_enabled_vehicleInspections", defect, fields);
 }
 function editVehicleDefect(index){
   const rows = filterByCompany(db.vehicleInspections);
@@ -3110,7 +3130,7 @@ async function addTruckProfile(){
   for(const file of Array.from(byId("truck_registrationFiles").files || [])){ registrationUploads.push(await storePortalFile(file)); }
   for(const file of Array.from(byId("truck_permitFiles").files || [])){ permitUploads.push(await storePortalFile(file)); }
 
-  db.truckProfiles.push({
+  const truck = {
     id: truckId,
     company,
     unit: byId("truck_unit").value.trim(),
@@ -3130,9 +3150,11 @@ async function addTruckProfile(){
     insuranceUploads,
     registrationUploads,
     permitUploads
-  });
-
-  checkTruckExpiriesAndCreateCAs(db.truckProfiles[db.truckProfiles.length - 1], company);
+  };
+  db.truckProfiles.push(truck);
+  const fields = {Title: truck.unit || "Truck", Company: truck.company, "Truck_x0020_ID": truck.unit, Year: truck.year, Make: truck.make, Model: truck.model, Plate: truck.plate, VIN: truck.vin, Crew: truck.crew, AssignedPerson: truck.person, HourlyRate: Number(truck.hourlyRate) || 0, IdleHours: Number(truck.idleHours) || 0, InsuranceExpiry: truck.insuranceExpiry, RegistrationExpiry: truck.registrationExpiry, PermitName: truck.permitName, PermitExpiry: truck.permitExpiry};
+  await syncCreateToSP("truckProfiles", "write_enabled_truckProfiles", truck, fields);
+  checkTruckExpiriesAndCreateCAs(truck, company);
   clearTruckEditor();
   rebuildAll();
 }
@@ -3267,16 +3289,19 @@ async function addLift(){
   const typeVal = byId("lift_type").value.trim();
   const countVal = byId("lift_count").value.trim();
   if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
-  db.lifts.push({
+  const lift = {
     company,
     date: dateVal,
     operator: operatorVal,
     unit: unitVal,
     liftType: typeVal,
     liftCount: Number(countVal)
-  });
+  };
+  db.lifts.push(lift);
   clearLiftEditor();
   rebuildAll();
+  const fields = {Title: `${lift.date} ${lift.unit || lift.liftType}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: lift.liftCount};
+  await syncCreateToSP("lifts", "write_enabled_lifts", lift, fields);
 }
 
 function editLift(index){
@@ -3464,15 +3489,19 @@ function renderAnalytics(){
 }
 
 async function addMaintLocation(){
+  const company=selectedCompany()==="All Companies" ? "" : selectedCompany();
   const name=byId("maintLoc_name").value || "";
   const address=byId("maintLoc_address").value || "";
   const hourlyLabourRate=Number(byId("maintLoc_hourlyLabourRate").value) || 0;
   const dealer=byId("maintLoc_dealer").checked;
   if(!name){alert("Location name is required.");return;}
   if(!db.maintenanceLocations) db.maintenanceLocations=[];
-  db.maintenanceLocations.push({name,address,hourlyLabourRate,dealer});
+  const loc = {company, name, address, hourlyLabourRate, dealer};
+  db.maintenanceLocations.push(loc);
   clearMaintLocEditor();
   rebuildAll();
+  const fields = {Title: loc.name, Company: loc.company, "Location_x0020_Name": loc.name, Address: loc.address, HourlyLabourRate: Number(loc.hourlyLabourRate) || 0, Dealer: loc.dealer ? "Yes" : "No"};
+  await syncCreateToSP("maintenanceLocations", "write_enabled_maintenanceLocations", loc, fields);
 }
 
 async function editMaintLocation(index){
@@ -3610,8 +3639,11 @@ async function addMaintRecord(){
     db.correctiveActions.push(ca);
   }
 
+  if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
   clearMaintRecordEditor();
   rebuildAll();
+  const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
+  await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
 }
 
 async function editMaintRecord(index){
@@ -3828,6 +3860,8 @@ async function addToolbox(){
   }
   clearPortalFilePicker("toolbox_upload_files","toolbox_upload_preview");
   rebuildAll();
+  const fields = {Title: rec.topic || "Toolbox Talk", Company: rec.company, Date: rec.date, Topic: rec.topic, Presenter: rec.presenter, Attendees: (rec.attendees || []).join(";"), Notes: rec.notes, DocumentReviewed: rec.documentReviewed, DocumentIndex: rec.documentIndex};
+  await syncCreateToSP("toolbox", "write_enabled_toolbox", rec, fields);
 }
 function editToolbox(index){
   const rows = filterByCompany(db.toolbox);
@@ -4357,10 +4391,14 @@ async function saveEditedTraining(){
   } catch(e){ console.error("saveEditedTraining error:",e); alert("Failed to save training: "+e.message); }
 }
 
-function addPerson(){
+async function addPerson(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select Heave Away or Cadillac first."); return; }
   const roles=getSelectedRoles(); if(!roles.length){ alert("Select at least one role."); return; }
-  db.people.push({company, name:byId("person_name").value.trim(), department:byId("person_department").value.trim(), status:byId("person_status").value, roles}); saveDB(); renderAll();
+  const entity = {company, name:byId("person_name").value.trim(), department:byId("person_department").value.trim(), status:byId("person_status").value, roles};
+  db.people.push(entity);
+  saveDB(); renderAll();
+  const fields = {Title: entity.name, Company: entity.company, Department: entity.department, Status: entity.status, Roles: entity.roles.join(";")};
+  await syncCreateToSP("people", "write_enabled_people", entity, fields);
 }
 
 async function addTraining(){
@@ -4371,7 +4409,7 @@ async function addTraining(){
       certs.push(await storeTrainingCertificate(file));
     }
     if(!db.training) db.training=[];
-    db.training.push({
+    const entity = {
       company,
       employee:((byId("training_employee")||{}).value||"").trim(),
       course:((byId("training_course")||{}).value||"").trim(),
@@ -4384,9 +4422,12 @@ async function addTraining(){
       addedBy:((byId("training_doc_by")||{}).value||"").trim(),
       dateAdded:(byId("training_doc_date")||{}).value,
       certificates: certs
-    });
+    };
+    db.training.push(entity);
     clearTrainingCertPicker("training_cert_files","training_cert_preview");
     saveDB(); renderAll();
+    const fields = {Title: entity.employee || "Training", Company: entity.company, Employee: entity.employee, Course: entity.course, "Completion_x0020_Date": entity.complete, "Expiry_x0020_Date": entity.expiry, Notes: entity.notes, Status: entity.status, DocumentPresent: entity.documentPresent, DocumentName: entity.documentName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+    await syncCreateToSP("training", "write_enabled_training", entity, fields);
   } catch(e){ console.error("addTraining error:",e); alert("Failed to add training: "+e.message); }
 }
 
@@ -4499,7 +4540,7 @@ function setNextReviewFromLastReviewed(lastId, nextId){
   byId(nextId).value = d.toISOString().slice(0,10);
 }
 
-function addDocument(){
+async function addDocument(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const docName = byId("doc_name").value.trim();
   const status = byId("doc_status").value || "Active";
@@ -4512,34 +4553,46 @@ function addDocument(){
       }
     });
   }
-  db.documents.push({company, name:docName, number:byId("doc_number").value.trim(), revision:byId("doc_revision").value.trim(), owner:byId("doc_owner").value.trim(), type:byId("doc_type").value, effective:byId("doc_effective").value, lastReviewed:byId("doc_last_reviewed").value, review:byId("doc_review").value, manual:byId("doc_manual").value.trim(), cor:byId("doc_cor").value.trim(), status, archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null, notes:byId("doc_notes").value, filePresent:byId("doc_file_present").value, fileName:byId("doc_file_name").value.trim(), addedBy:byId("doc_file_by").value.trim(), dateAdded:byId("doc_file_date").value});
+  const entity = {company, name:docName, number:byId("doc_number").value.trim(), revision:byId("doc_revision").value.trim(), owner:byId("doc_owner").value.trim(), type:byId("doc_type").value, effective:byId("doc_effective").value, lastReviewed:byId("doc_last_reviewed").value, review:byId("doc_review").value, manual:byId("doc_manual").value.trim(), cor:byId("doc_cor").value.trim(), status, archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null, notes:byId("doc_notes").value, filePresent:byId("doc_file_present").value, fileName:byId("doc_file_name").value.trim(), addedBy:byId("doc_file_by").value.trim(), dateAdded:byId("doc_file_date").value};
+  db.documents.push(entity);
   rebuildAll();
+  const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+  await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
 }
-function batchAddDocuments(){
+async function batchAddDocuments(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const files = Array.from(byId("doc_batch_files").files || []);
   if(!files.length){ alert("Select files first."); return; }
+  const newEntities = [];
   files.forEach(f => {
     const docName = f.name;
-    // Archive lifecycle: status + archivedDate; legacy default Active; adding/activating same-name archives older
     db.documents.forEach(d => {
       if(d.company === company && d.name === docName && (d.status === "Active" || !d.status)){
         d.status = "Archived";
         d.archivedDate = new Date().toISOString().slice(0,10);
       }
     });
-    db.documents.push({company, name:docName, number:"", revision:"", owner:byId("doc_batch_owner").value.trim(), type:byId("doc_batch_type").value, effective:"", lastReviewed:byId("doc_batch_last_reviewed").value, review:byId("doc_batch_review").value, manual:byId("doc_batch_manual").value.trim(), cor:byId("doc_batch_cor").value.trim(), status:"Active", archivedDate:null, notes:"Created by batch tracker.", filePresent:"Yes", fileName:f.name, addedBy:"", dateAdded:""});
+    const entity = {company, name:docName, number:"", revision:"", owner:byId("doc_batch_owner").value.trim(), type:byId("doc_batch_type").value, effective:"", lastReviewed:byId("doc_batch_last_reviewed").value, review:byId("doc_batch_review").value, manual:byId("doc_batch_manual").value.trim(), cor:byId("doc_batch_cor").value.trim(), status:"Active", archivedDate:null, notes:"Created by batch tracker.", filePresent:"Yes", fileName:f.name, addedBy:"", dateAdded:""};
+    db.documents.push(entity);
+    newEntities.push(entity);
   });
   byId("doc_batch_files").value = "";
   byId("doc_batch_preview").innerHTML = "No files selected.";
   rebuildAll();
+  for(const entity of newEntities){
+    const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+    await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
+  }
 }
 async function addInspection(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const uploads = [];
   for(const file of Array.from(byId("insp_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
-  db.inspections.push({company, date:byId("insp_date").value, crew:byId("insp_crew").value.trim(), location:byId("insp_location").value.trim(), inspector:byId("insp_inspector").value.trim(), notes:byId("insp_notes").value, proofPresent:byId("insp_proof_present").value, proofDescription:byId("insp_proof_desc").value.trim(), addedBy:byId("insp_proof_by").value.trim(), dateAdded:byId("insp_proof_date").value, uploads, actions:collectActionBlocks("inspection")});
+  const entity = {company, date:byId("insp_date").value, crew:byId("insp_crew").value.trim(), location:byId("insp_location").value.trim(), inspector:byId("insp_inspector").value.trim(), notes:byId("insp_notes").value, proofPresent:byId("insp_proof_present").value, proofDescription:byId("insp_proof_desc").value.trim(), addedBy:byId("insp_proof_by").value.trim(), dateAdded:byId("insp_proof_date").value, uploads, actions:collectActionBlocks("inspection")};
+  db.inspections.push(entity);
   clearActionBlocks("inspection"); clearPortalFilePicker("insp_upload_files","insp_upload_preview"); rebuildAll();
+  const fields = {Title: entity.location || "Inspection", Company: entity.company, "Inspection_x0020_Date": entity.date, Area: entity.location, Inspector: entity.inspector, Findings: entity.notes, Crew: entity.crew, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+  await syncCreateToSP("inspections", "write_enabled_inspections", entity, fields);
 }
 async function addIncident(){
   try{
@@ -4550,7 +4603,7 @@ async function addIncident(){
     const dateVal = (byId("incident_date")||{}).value;
     const incidentNumber = ((byId("incident_number")||{}).value||"").trim() || nextIncidentNumber(company, dateVal);
     if(!db.incidents) db.incidents=[];
-    db.incidents.push({
+    const entity = {
       company,
       incidentNumber,
       date:dateVal,
@@ -4573,23 +4626,32 @@ async function addIncident(){
       dateAdded:(byId("incident_proof_date")||{}).value,
       uploads,
       actions
-    });
+    };
+    db.incidents.push(entity);
     clearActionBlocks("incident"); clearPortalFilePicker("incident_upload_files","incident_upload_preview"); setIncidentDefaultDue(); rebuildAll();
+    const fields = {Title: entity.incidentNumber || "Incident", Company: entity.company, "Incident_x0020_ID": entity.incidentNumber, Date: entity.date, "Employee_x0020__x0028_Injured_x0029_": entity.employee, Location: entity.location, Unit: entity.unit, "Investigation_x0020_Status": entity.severity, LiftType: entity.liftType, Description: entity.description, PhotosPresent: entity.photosPresent, VideoPresent: entity.videoPresent, ProofDescription: entity.proofDescription, "Immediate_x0020_Causes": (entity.immediateCause || []).join(", "), ImmediateCauseNotes: entity.immediateCauseNotes, "Basic_x0020_Causes": (entity.basicCause || []).join(", "), BasicCauseNotes: entity.basicCauseNotes, IssueTags: (entity.issueTags || []).join(", "), "Reported_x0020_By": entity.addedBy, DateAdded: entity.dateAdded};
+    await syncCreateToSP("incidents", "write_enabled_incidents", entity, fields);
   } catch(e){ console.error("addIncident error:",e); alert("Failed to add incident: "+e.message); }
 }
 async function addHazard(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const uploads = [];
   for(const file of Array.from(byId("hazard_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
-  db.hazard.push({company, date:byId("hazard_date").value, task:byId("hazard_task").value.trim(), location:byId("hazard_location").value.trim(), leader:byId("hazard_leader").value.trim(), hazards:byId("hazard_hazards").value, controls:byId("hazard_controls").value, proofPresent:byId("hazard_proof_present").value, proofDescription:byId("hazard_proof_desc").value.trim(), addedBy:byId("hazard_proof_by").value.trim(), dateAdded:byId("hazard_proof_date").value, uploads});
+  const entity = {company, date:byId("hazard_date").value, task:byId("hazard_task").value.trim(), location:byId("hazard_location").value.trim(), leader:byId("hazard_leader").value.trim(), hazards:byId("hazard_hazards").value, controls:byId("hazard_controls").value, proofPresent:byId("hazard_proof_present").value, proofDescription:byId("hazard_proof_desc").value.trim(), addedBy:byId("hazard_proof_by").value.trim(), dateAdded:byId("hazard_proof_date").value, uploads};
+  db.hazard.push(entity);
   clearPortalFilePicker("hazard_upload_files","hazard_upload_preview"); saveDB(); renderAll();
+  const fields = {Title: entity.task || "Hazard", Company: entity.company, "Assessment_x0020_Date": entity.date, "Area_x002f_Process": entity.task, Location: entity.location, "Assigned_x0020_To": entity.leader, "Hazard_x0020_Type": entity.hazards, Controls: entity.controls, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+  await syncCreateToSP("hazard", "write_enabled_hazard", entity, fields);
 }
 async function addCommittee(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const uploads = [];
   for(const file of Array.from(byId("committee_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
-  db.committee.push({company, name:byId("committee_name").value.trim(), role:byId("committee_role").value.trim(), due:byId("committee_due").value, notes:byId("committee_notes").value, proofPresent:byId("committee_proof_present").value, proofDescription:byId("committee_proof_desc").value.trim(), addedBy:byId("committee_proof_by").value.trim(), dateAdded:byId("committee_proof_date").value, uploads});
+  const entity = {company, name:byId("committee_name").value.trim(), role:byId("committee_role").value.trim(), due:byId("committee_due").value, notes:byId("committee_notes").value, proofPresent:byId("committee_proof_present").value, proofDescription:byId("committee_proof_desc").value.trim(), addedBy:byId("committee_proof_by").value.trim(), dateAdded:byId("committee_proof_date").value, uploads};
+  db.committee.push(entity);
   clearPortalFilePicker("committee_upload_files","committee_upload_preview"); rebuildAll();
+  const fields = {Title: entity.name || "Committee Meeting", Company: entity.company, Role: entity.role, "Next_x0020_Meeting_x0020_Date": entity.due, "Decisions_x002f_Actions": entity.notes, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+  await syncCreateToSP("committee", "write_enabled_committee", entity, fields);
 }
 
 function editInspection(index){
