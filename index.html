@@ -1314,26 +1314,6 @@ async function getListItems(listName){
   const result = await graphCall(`/sites/${siteId}/lists/${listId}/items?expand=fields&$top=5000`);
   return result.value || [];
 }
-async function loadFeatureFlags(){
-  try {
-    const configItems = await getListItems("_Config");
-    configItems.forEach(item => {
-      const title = item.fields.Title;
-      const value = item.fields.Value;
-      if(title && value !== undefined){
-        // Convert string "true"/"false" to boolean if needed
-        if(typeof value === 'string'){
-          FEATURE_FLAGS[title] = value.toLowerCase() === 'true';
-        } else {
-          FEATURE_FLAGS[title] = !!value;
-        }
-      }
-    });
-    console.log("Feature flags loaded from _Config:", FEATURE_FLAGS);
-  } catch(error){
-    console.warn("Failed to load feature flags from _Config. Using defaults.", error);
-  }
-}
 async function exponentialBackoff(attempt, maxRetries=4){
   const baseDelay = 1000 * Math.pow(2, attempt);
   const jitter = baseDelay * 0.2 * Math.random();
