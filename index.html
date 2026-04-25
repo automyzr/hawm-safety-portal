@@ -5206,6 +5206,79 @@ async function saveEditedCA(caId, updates){
     showToast('CA save failed: '+(err && err.message || err),'error');
   }
 }
+async function saveEditedCOR(corId, updates){
+  const cor = (db.cor||[]).find(c => String(c.id) === String(corId));
+  if(!cor){ showToast('COR not found: '+corId, 'error'); return; }
+  const merged = Object.assign({}, cor, updates);
+  const fields = {
+    Company: merged.company || '',
+    Section: merged.section || '',
+    Compliant: merged.status === 'Pass' ? 'Yes' : 'No',
+    Comment: merged.notes || '',
+    Last_x0020_Audit_x0020_Date: merged.lastAuditDate || ''
+  };
+  if(!FEATURE_FLAGS.write_enabled_cor){
+    logAuditEntry({action:'Update',entityType:'cor',entityId:corId,companyContext:cor.company||'',errorDetail:'flag disabled'});
+    showToast('COR save blocked: write_enabled_cor disabled','warn');
+    return;
+  }
+  const before = JSON.parse(JSON.stringify(cor));
+  try {
+    if(!cor.id){
+      const result = await graphCreateItem('cor', fields);
+      cor.id = result.id;
+      cor.etag = result.etag;
+    } else {
+      await graphUpdateItem('cor', cor.id, fields, cor.etag);
+    }
+    Object.assign(cor, merged);
+    logAuditEntry({action:'Update',entityType:'cor',entityId:cor.id,companyContext:cor.company||'',fieldsBefore:JSON.stringify(before),fieldsAfter:JSON.stringify(merged)});
+    showToast('✓ COR saved','success');
+    saveDB();
+  } catch(err){
+    logAuditEntry({action:'Update',entityType:'cor',entityId:corId,companyContext:cor.company||'',errorDetail:String(err && err.message || err)});
+    showToast('COR save failed: '+(err && err.message || err),'error');
+  }
+}
+async function saveEditedCOROverride(overrideKey, updates){
+  // overrideKey format: ${company}||${section} (double-pipe preserved)
+  const override = (db.corOverrides||{})[overrideKey];
+  if(!override){ showToast('COR Override not found: '+overrideKey, 'error'); return; }
+  const merged = Object.assign({}, override, updates);
+  // Parse key to extract company and section
+  const [company, section] = overrideKey.split('||');
+  const fields = {
+    Title: overrideKey,
+    Company: company || '',
+    Section: section || '',
+    Status: merged.status || 'Override',
+    'Override_x0020_Notes': merged.reason || ''
+  };
+  if(!FEATURE_FLAGS.write_enabled_corOverrides){
+    logAuditEntry({action:'Update',entityType:'corOverrides',entityId:overrideKey,companyContext:company||'',errorDetail:'flag disabled'});
+    showToast('COR Override save blocked: write_enabled_corOverrides disabled','warn');
+    return;
+  }
+  const before = JSON.parse(JSON.stringify(override));
+  try {
+    // Look up SP item by Title (which equals the key)
+    const existing = await getListItems('corOverrides');
+    const item = existing.find(x => fieldValue(x.fields, ['Title']) === overrideKey);
+    if(!item){
+      const result = await graphCreateItem('corOverrides', fields);
+      // Note: SP item id stored but key-based lookup used for local references
+    } else {
+      await graphUpdateItem('corOverrides', item.id, fields, item.etag);
+    }
+    Object.assign(override, merged);
+    logAuditEntry({action:'Update',entityType:'corOverrides',entityId:overrideKey,companyContext:company||'',fieldsBefore:JSON.stringify(before),fieldsAfter:JSON.stringify(merged)});
+    showToast('✓ COR Override saved','success');
+    saveDB();
+  } catch(err){
+    logAuditEntry({action:'Update',entityType:'corOverrides',entityId:overrideKey,companyContext:company||'',errorDetail:String(err && err.message || err)});
+    showToast('COR Override save failed: '+(err && err.message || err),'error');
+  }
+}
 function updateCA(index, field, value){
   const rec=getReminderRows()[index]; if(!rec) return;
   const actualIndex = db.correctiveActions.findIndex(x => x.company===rec.company && x.reference===rec.reference && x.source===rec.source);
