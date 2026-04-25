@@ -1045,12 +1045,40 @@ function companyIncidentPrefix(company){
   if(company === "Cadillac") return "CS";
   return "GEN";
 }
-function nextIncidentNumber(company, dateStr){
+async function nextIncidentNumber(company, dateStr){
   const year = (dateStr || todayISO()).slice(0,4) || new Date().getFullYear().toString();
   const key = `${company}||${year}`;
   if(!db.incidentCounters) db.incidentCounters = {};
+  if(!db.incidentCounterSpItemIds) db.incidentCounterSpItemIds = {};
   db.incidentCounters[key] = (db.incidentCounters[key] || 0) + 1;
-  return `${companyIncidentPrefix(company)}-${year}-${String(db.incidentCounters[key]).padStart(3,"0")}`;
+  const newValue = db.incidentCounters[key];
+
+  // Persist to SP if write is enabled (gated by write_enabled_incidents flag)
+  if(FEATURE_FLAGS.write_enabled_incidents){
+    const spItemId = db.incidentCounterSpItemIds[key];
+    const counterEntry = {Company: company, Year: year, Counter: newValue};
+
+    if(spItemId){
+      // Update existing SP item
+      try {
+        await graphUpdateItem('incidentCounters', spItemId, {Counter: newValue});
+      } catch(err){
+        console.error(`Failed to update incident counter SP item ${spItemId}:`, err);
+      }
+    } else {
+      // Create new SP item; syncCreateToSP will populate db.incidentCounterSpItemIds on success
+      try {
+        const result = await graphCreateItem('incidentCounters', {Title: key, ...counterEntry});
+        if(result && result.id){
+          db.incidentCounterSpItemIds[key] = result.id;
+        }
+      } catch(err){
+        console.error(`Failed to create incident counter SP item for ${key}:`, err);
+      }
+    }
+  }
+
+  return `${companyIncidentPrefix(company)}-${year}-${String(newValue).padStart(3,"0")}`;
 }
 function splitIssueTags(text){
   return (text || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -2014,7 +2042,13 @@ function mapIncidentCounters(items){
     const company = normalizeText(fieldValue(item.fields, ["Company"]));
     const year = normalizeText(fieldValue(item.fields, ["Year"]));
     const nextCounter = Number(fieldValue(item.fields, ["Next_x0020_Counter", "Next Counter"], 0) || 0);
-    if(company && year) acc[`${company}||${year}`] = nextCounter;
+    if(company && year){
+      const key = `${company}||${year}`;
+      acc[key] = nextCounter;
+      // Cache SP item ID for later updates
+      if(!db.incidentCounterSpItemIds) db.incidentCounterSpItemIds = {};
+      if(item.id) db.incidentCounterSpItemIds[key] = item.id;
+    }
     return acc;
   }, {});
 }
@@ -4672,7 +4706,7 @@ async function addIncident(){
     for(const file of Array.from((byId("incident_upload_files")||{}).files || [])){ uploads.push(await storePortalFile(file)); }
     const actions=collectActionBlocks("incident").map(a => ({...a, due:a.due||addDays((byId("incident_date")||{}).value||todayISO(),2)}));
     const dateVal = (byId("incident_date")||{}).value;
-    const incidentNumber = ((byId("incident_number")||{}).value||"").trim() || nextIncidentNumber(company, dateVal);
+    const incidentNumber = ((byId("incident_number")||{}).value||"").trim() || await nextIncidentNumber(company, dateVal);
     if(!db.incidents) db.incidents=[];
     const entity = {
       company,
