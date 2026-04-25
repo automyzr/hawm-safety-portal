@@ -977,7 +977,7 @@ const FEATURE_FLAGS = {
 let msalClient = null;
 let graphSiteId = "";
 const graphListIdCache = new Map();
-const defaultDB = { state:{selectedCompany:"All Companies",lastExport:"",lastImport:"",analyticsBaseline:""}, people:[], training:[], documents:[], manual:[], cor:[], corOverrides:{}, toolbox:[], vehicleInspections:[], truckProfiles:[], inspections:[], incidents:[], hazard:[], committee:[], correctiveActions:[], incidentCounters:{}, maintenanceLocations:[], maintenanceRecords:[], lifts:[] };
+const defaultDB = { state:{selectedCompany:"All Companies",lastExport:"",lastImport:"",analyticsBaseline:""}, people:[], training:[], documents:[], manual:[], cor:[], corOverrides:{}, toolbox:[], vehicleInspections:[], truckProfiles:[], inspections:[], incidents:[], hazard:[], committee:[], correctiveActions:[], incidentCounters:{}, maintenanceLocations:[], maintenanceRecords:[], lifts:[], audit:[] };
 const companyRoles = {
   "Heave Away":["Manager","Safety","Roll Off","Front Load","Fork Truck"],
   "Cadillac":["Manager","Supervisor","Vice President","Safety","Water & Sewer","Heavy Civil","Landscaper","Carpenter"]
@@ -1203,6 +1203,70 @@ function migrateAfterImport(){
   if(!db.incidents) db.incidents = [];
   if(!db.hazard) db.hazard = [];
   migrateDocumentsStatusField();
+}
+function logAuditEntry(arg){
+  // Support both simple format: logAuditEntry(action, listSlug, entityId, fields)
+  // and object format: logAuditEntry({action, list, itemId, ...})
+  let auditObj = {};
+  if(typeof arg === "string"){
+    // Simple format: (action, listSlug, entityId, fields)
+    const [action, listSlug, entityId, fields] = arguments;
+    auditObj = { action, entityType: listSlug, entityId, fieldsBefore: {}, fieldsAfter: fields };
+  } else {
+    // Object format: map old field names to new schema
+    auditObj = { ...arg };
+    auditObj.entityType = arg.list || arg.entityType;
+    auditObj.entityId = arg.itemId || arg.entityId;
+    auditObj.action = arg.action || 'Unknown';
+    auditObj.fieldsBefore = arg.delta ? { delta: arg.delta } : {};
+    auditObj.fieldsAfter = arg.delta ? { delta: arg.delta } : {};
+    auditObj.errorDetail = arg.error || arg.errorDetail || null;
+    if(arg.blocked) auditObj.errorDetail = 'flag disabled';
+  }
+
+  // Push to local db.audit
+  if(!db.audit) db.audit = [];
+  const timestamp = new Date().toISOString();
+  const client = msalClient || {};
+  const account = client.getActiveAccount ? client.getActiveAccount() : null;
+  const user = account?.username || account?.name || 'unknown';
+  const companyContext = db.state?.selectedCompany || 'All Companies';
+
+  const localEntry = {
+    id: `audit_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
+    title: auditObj.action + ' ' + auditObj.entityType + ' ' + (auditObj.entityId || ''),
+    timestamp,
+    user,
+    action: auditObj.action,
+    entityType: auditObj.entityType,
+    entityId: auditObj.entityId || null,
+    companyContext,
+    fieldsBefore: JSON.stringify(auditObj.fieldsBefore || {}),
+    fieldsAfter: JSON.stringify(auditObj.fieldsAfter || {}),
+    errorDetail: auditObj.errorDetail || null
+  };
+  db.audit.push(localEntry);
+
+  // Fire-and-forget SP write (fail-soft)
+  try {
+    const spFields = {
+      Title: localEntry.title,
+      Timestamp: timestamp,
+      User: user,
+      Action: auditObj.action,
+      EntityType: auditObj.entityType,
+      EntityId: auditObj.entityId || null,
+      CompanyContext: companyContext,
+      FieldsBefore: localEntry.fieldsBefore,
+      FieldsAfter: localEntry.fieldsAfter,
+      ErrorDetail: auditObj.errorDetail || null
+    };
+    graphCreateItem('audit', spFields).catch(e => {
+      console.debug('audit SP write failed (list may not exist yet)', e);
+    });
+  } catch(e){
+    console.debug('audit SP write exception', e);
+  }
 }
 function byId(id){ return document.getElementById(id); }
 function showToast(message, type = "info"){
