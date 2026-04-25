@@ -4970,6 +4970,62 @@ function addManualCA(){
   db.correctiveActions.push({company, sourceType:"Manual", source:byId("ca_source").value.trim(), reference:byId("ca_reference").value.trim(), priority:byId("ca_priority").value, assigned:byId("ca_assigned").value.trim(), due:byId("ca_due").value, action:byId("ca_action").value, auto:false, locked:false, createdDate:todayISO(), sourceDate:todayISO(), completionDate:"", completionNotes:"", evidencePresent:"No", evidenceDescription:"", evidenceAddedBy:"", evidenceDateAdded:"", verifiedBy:"", verifiedEffective:false, escalation:""});
   rebuildAll();
 }
+async function saveEditedCA(caId, updates){
+  const ca = (db.correctiveActions||[]).find(c => String(c.id) === String(caId));
+  if(!ca){ showToast('CA not found: '+caId, 'error'); return; }
+  const validTransitions = {
+    'Open': ['In Progress','Resolved'],
+    'In Progress': ['Resolved','Open'],
+    'Resolved': []
+  };
+  if(updates.status && updates.status !== ca.status){
+    const allowed = validTransitions[ca.status] || [];
+    if(!allowed.includes(updates.status)){
+      showToast(`Invalid CA status transition: ${ca.status} → ${updates.status}`,'error');
+      return;
+    }
+  }
+  const merged = Object.assign({}, ca, updates);
+  const fields = {
+    Title: merged.reference || `CA ${caId}`,
+    Status: merged.status || 'Open',
+    "Source_x0020_Type": merged.sourceType || '',
+    "Triggered_x0020_By": merged.source || '',
+    "Related_x0020_Incident_x002f_Inspection": merged.reference || '',
+    Priority: merged.priority || 'Medium',
+    "Assigned_x0020_To": merged.assigned || '',
+    "Due_x0020_Date": merged.due || '',
+    Description: merged.action || '',
+    "Completion_x0020_Date": merged.completionDate || '',
+    "Evidence_x002f_Notes": merged.completionNotes || '',
+    Verification: merged.verification || '',
+    "Status_x0020_Auto_x003f_": merged.evidencePresent ? 'Yes' : 'No',
+    "Escalation_x0020_Notes": merged.escalation || '',
+    Company: merged.company || ''
+  };
+  if(!FEATURE_FLAGS.write_enabled_correctiveActions){
+    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: caId, action: 'UPDATE', delta: fields, blocked: true});
+    showToast('CA save blocked: write_enabled_correctiveActions disabled','warn');
+    return;
+  }
+  const before = JSON.parse(JSON.stringify(ca));
+  try {
+    if(!ca.id){
+      const result = await graphCreateItem('correctiveActions', fields);
+      ca.id = result.id;
+      ca.etag = result.etag;
+    } else {
+      await graphUpdateItem('correctiveActions', ca.id, fields, ca.etag);
+    }
+    Object.assign(ca, merged);
+    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: ca.id, action: 'UPDATE', delta: fields});
+    showToast('✓ CA saved','success');
+    saveDB();
+  } catch(err){
+    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: caId, action: 'ERROR', error: String(err && err.message || err)});
+    showToast('CA save failed: '+(err && err.message || err),'error');
+  }
+}
 function updateCA(index, field, value){
   const rec=getReminderRows()[index]; if(!rec) return;
   const actualIndex = db.correctiveActions.findIndex(x => x.company===rec.company && x.reference===rec.reference && x.source===rec.source);
