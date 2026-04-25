@@ -1789,10 +1789,10 @@ function mapTraining(items){
     complete: normalizeText(fieldValue(item.fields, ["Completion_x0020_Date", "Completion Date"])),
     expiry: normalizeText(fieldValue(item.fields, ["Expiry_x0020_Date", "Expiry Date"])),
     notes: normalizeText(fieldValue(item.fields, ["Notes"])),
-    documentPresent: noteToArray(fieldValue(item.fields, ["CertificateFileIDs"], [])).length ? "Yes" : "No",
-    documentName: "",
-    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    documentPresent: normalizeText(fieldValue(item.fields, ["DocumentPresent"], noteToArray(fieldValue(item.fields, ["CertificateFileIDs"], [])).length ? "Yes" : "No")),
+    documentName: normalizeText(fieldValue(item.fields, ["DocumentName"])),
+    addedBy: normalizeText(fieldValue(item.fields, ["AddedBy"])) || normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     certificates: noteToArray(fieldValue(item.fields, ["CertificateFileIDs"], []))
   }));
 }
@@ -1801,21 +1801,21 @@ function mapDocuments(items){
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Title"])),
     number: normalizeText(fieldValue(item.fields, ["Number", "Doc_x0020__x0023_"])),
-    revision: normalizeText(fieldValue(item.fields, ["Version"])),
+    revision: normalizeText(fieldValue(item.fields, ["Revision", "Version"])),
     owner: normalizeText(fieldValue(item.fields, ["Owner"])),
     effective: normalizeText(fieldValue(item.fields, ["Effective"])),
     review: normalizeText(fieldValue(item.fields, ["Next_x0020_Review_x0020_Due", "Next Review Due"])),
-    manual: normalizeText(fieldValue(item.fields, ["Manual_x0020_Section", "Manual Section"])),
+    manual: normalizeText(fieldValue(item.fields, ["ManualSection", "Manual_x0020_Section", "Manual Section"])),
     cor: normalizeText(fieldValue(item.fields, ["COR_x0020_Section", "COR Section"])),
     notes: normalizeText(fieldValue(item.fields, ["Notes"])),
-    filePresent: noteToArray(fieldValue(item.fields, ["FileIDs"], [])).length ? "Yes" : "No",
-    fileName: "",
-    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    filePresent: normalizeText(fieldValue(item.fields, ["FilePresent"], noteToArray(fieldValue(item.fields, ["FileIDs"], [])).length ? "Yes" : "No")),
+    fileName: normalizeText(fieldValue(item.fields, ["FileName"])),
+    addedBy: normalizeText(fieldValue(item.fields, ["AddedBy"])) || normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     type: normalizeText(fieldValue(item.fields, ["Document_x0020_Type", "Document Type"])),
     lastReviewed: normalizeText(fieldValue(item.fields, ["Last_x0020_Review_x0020_Date", "Last Review Date"])),
     status: normalizeText(fieldValue(item.fields, ["Status"], "Active")),
-    archivedDate: normalizeText(fieldValue(item.fields, ["Archived_x0020_Date", "Archived Date"]))
+    archivedDate: normalizeText(fieldValue(item.fields, ["ArchivedDate", "Archived_x0020_Date", "Archived Date"]))
   }));
 }
 function mapManual(items){
@@ -1853,7 +1853,7 @@ function mapCorOverrides(items){
     const section = normalizeText(fieldValue(item.fields, ["Section", "Title"]));
     if(!company || !section) return acc;
     acc[`${company}||${section}`] = {
-      status: "Override",
+      status: normalizeText(fieldValue(item.fields, ["Status"], "Override")),
       reason: normalizeText(fieldValue(item.fields, ["Override_x0020_Notes", "Override Notes"]))
     };
     return acc;
@@ -1866,8 +1866,8 @@ function mapToolbox(items){
     presenter: normalizeText(fieldValue(item.fields, ["Presenter"])),
     topic: normalizeText(fieldValue(item.fields, ["Topic", "Title"])),
     attendees: noteToArray(fieldValue(item.fields, ["Attendees"], [])),
-    documentReviewed: "No",
-    documentIndex: "",
+    documentReviewed: normalizeText(fieldValue(item.fields, ["DocumentReviewed"], "No")),
+    documentIndex: normalizeText(fieldValue(item.fields, ["DocumentIndex"])),
     uploads: [],
     notes: normalizeText(fieldValue(item.fields, ["Notes"])),
     durationMinutes: normalizeText(fieldValue(item.fields, ["Duration_x0020_Minutes", "Duration Minutes"]))
@@ -1879,13 +1879,14 @@ function mapVehicle(items){
     dateReported: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
     reportedBy: normalizeText(fieldValue(item.fields, ["Inspector"])),
     unit: normalizeText(fieldValue(item.fields, ["Vehicle_x0020_ID", "Vehicle ID"])),
-    plate: "",
+    plate: normalizeText(fieldValue(item.fields, ["Plate"])),
     severity: normalizeText(fieldValue(item.fields, ["Pass_x002f_Fail", "Pass/Fail"])),
     outOfService: toBoolean(fieldValue(item.fields, ["Out_x0020_of_x0020_Service_x003f_", "Out of Service?"])) ? "Yes" : "No",
-    assigned: "",
+    assigned: normalizeText(fieldValue(item.fields, ["Assigned"])),
     defect: normalizeText(fieldValue(item.fields, ["Defects_x0020_Found", "Defects Found"])),
-    repairDue: "",
-    dateRepaired: "",
+    repairDue: normalizeText(fieldValue(item.fields, ["RepairDue"])),
+    dateRepaired: normalizeText(fieldValue(item.fields, ["DateRepaired"])),
+    repairNotes: normalizeText(fieldValue(item.fields, ["RepairNotes"])),
     uploads: noteToArray(fieldValue(item.fields, ["DefectPhotoFileIDs"], []))
   }));
 }
@@ -1893,14 +1894,14 @@ function mapInspections(items){
   return items.map(item => ({
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
-    crew: "",
+    crew: normalizeText(fieldValue(item.fields, ["Crew"])),
     location: normalizeText(fieldValue(item.fields, ["Area", "Title"])),
     inspector: normalizeText(fieldValue(item.fields, ["Inspector"])),
     notes: normalizeText(fieldValue(item.fields, ["Findings"])),
-    proofPresent: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No",
-    proofDescription: "",
-    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    proofPresent: normalizeText(fieldValue(item.fields, ["ProofPresent"], noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No")),
+    proofDescription: normalizeText(fieldValue(item.fields, ["ProofDescription"])),
+    addedBy: normalizeText(fieldValue(item.fields, ["AddedBy"])) || normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     uploads: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])),
     actions: noteToArray(fieldValue(item.fields, ["Embedded_x0020_CAs", "Embedded CAs"], []))
   }));
@@ -1915,18 +1916,18 @@ function mapIncidents(items){
     location: normalizeText(fieldValue(item.fields, ["Location"])),
     unit: normalizeText(fieldValue(item.fields, ["Unit"], "")),
     severity: normalizeText(fieldValue(item.fields, ["Investigation_x0020_Status", "Investigation Status"], "Open")),
-    liftType: normalizeText(fieldValue(item.fields, ["Lift_x0020_Type", "Lift Type"], "")),
+    liftType: normalizeText(fieldValue(item.fields, ["LiftType", "Lift_x0020_Type", "Lift Type"], "")),
     immediateCause: noteToArray(fieldValue(item.fields, ["Immediate_x0020_Causes", "Immediate Causes"], [])),
-    immediateCauseNotes: normalizeText(fieldValue(item.fields, ["Immediate_x0020_Cause_x0020_Notes", "Immediate Cause Notes"], "")),
+    immediateCauseNotes: normalizeText(fieldValue(item.fields, ["ImmediateCauseNotes", "Immediate_x0020_Cause_x0020_Notes", "Immediate Cause Notes"], "")),
     basicCause: noteToArray(fieldValue(item.fields, ["Basic_x0020_Causes", "Basic Causes"], [])),
-    basicCauseNotes: normalizeText(fieldValue(item.fields, ["Basic_x0020_Cause_x0020_Notes", "Basic Cause Notes"], "")),
-    issueTags: [],
+    basicCauseNotes: normalizeText(fieldValue(item.fields, ["BasicCauseNotes", "Basic_x0020_Cause_x0020_Notes", "Basic Cause Notes"], "")),
+    issueTags: toArray(fieldValue(item.fields, ["IssueTags"], [])),
     description: normalizeText(fieldValue(item.fields, ["Description"])),
-    photosPresent: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No",
-    videoPresent: "No",
-    proofDescription: "",
+    photosPresent: normalizeText(fieldValue(item.fields, ["PhotosPresent"], noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])).length ? "Yes" : "No")),
+    videoPresent: normalizeText(fieldValue(item.fields, ["VideoPresent"], "No")),
+    proofDescription: normalizeText(fieldValue(item.fields, ["ProofDescription"])),
     addedBy: normalizeText(fieldValue(item.fields, ["Reported_x0020_By", "Reported By"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     uploads: noteToArray(fieldValue(item.fields, ["PhotoFileIDs"], [])),
     actions: [],
     issueTagsText: ""
@@ -1937,14 +1938,14 @@ function mapHazard(items){
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Assessment_x0020_Date", "Assessment Date"])),
     task: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process", "Title"])),
-    location: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process"])),
+    location: normalizeText(fieldValue(item.fields, ["Location"])) || normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process"])),
     leader: normalizeText(fieldValue(item.fields, ["Assigned_x0020_To", "Assigned To"])),
     hazards: normalizeText(fieldValue(item.fields, ["Hazard_x0020_Type", "Hazard Type"])),
     controls: normalizeText(fieldValue(item.fields, ["Controls"])),
-    proofPresent: noteToArray(fieldValue(item.fields, ["ProofFileIDs"], [])).length ? "Yes" : "No",
-    proofDescription: "",
-    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    proofPresent: normalizeText(fieldValue(item.fields, ["ProofPresent"], noteToArray(fieldValue(item.fields, ["ProofFileIDs"], [])).length ? "Yes" : "No")),
+    proofDescription: normalizeText(fieldValue(item.fields, ["ProofDescription"])),
+    addedBy: normalizeText(fieldValue(item.fields, ["AddedBy"])) || normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     uploads: noteToArray(fieldValue(item.fields, ["ProofFileIDs"], []))
   }));
 }
@@ -1955,10 +1956,10 @@ function mapCommittee(items){
     role: normalizeText(fieldValue(item.fields, ["Role"])),
     due: normalizeText(fieldValue(item.fields, ["Next_x0020_Meeting_x0020_Date", "Next Meeting Date", "Meeting_x0020_Date", "Meeting Date"])),
     notes: normalizeText(fieldValue(item.fields, ["Decisions_x002f_Actions", "Decisions/Actions", "Topics_x0020_Discussed", "Topics Discussed"])),
-    proofPresent: noteToArray(fieldValue(item.fields, ["UploadFileIDs"], [])).length ? "Yes" : "No",
-    proofDescription: "",
-    addedBy: normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
-    dateAdded: normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
+    proofPresent: normalizeText(fieldValue(item.fields, ["ProofPresent"], noteToArray(fieldValue(item.fields, ["UploadFileIDs"], [])).length ? "Yes" : "No")),
+    proofDescription: normalizeText(fieldValue(item.fields, ["ProofDescription"])),
+    addedBy: normalizeText(fieldValue(item.fields, ["AddedBy"])) || normalizeText(fieldValue(item.fields, ["EditorLookupId"])),
+    dateAdded: normalizeText(fieldValue(item.fields, ["DateAdded"])) || normalizeText(fieldValue(item.fields, ["Created"])).slice(0, 10),
     uploads: noteToArray(fieldValue(item.fields, ["UploadFileIDs"], []))
   }));
 }
@@ -2004,37 +2005,45 @@ function mapTruckProfiles(items){
   return items.map(item => ({
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     unit: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
-    plate: "",
+    plate: normalizeText(fieldValue(item.fields, ["Plate"])),
     year: normalizeText(fieldValue(item.fields, ["Year"])),
     make: normalizeText(fieldValue(item.fields, ["Make"])),
     model: normalizeText(fieldValue(item.fields, ["Model"])),
+    vin: normalizeText(fieldValue(item.fields, ["VIN"])),
+    crew: normalizeText(fieldValue(item.fields, ["Crew"])),
+    person: normalizeText(fieldValue(item.fields, ["AssignedPerson"])),
     capacity: normalizeText(fieldValue(item.fields, ["Capacity_x0020_Tons", "Capacity Tons"])),
     type: normalizeText(fieldValue(item.fields, ["Service_x002f_Lift_x0020_Type", "Service/Lift Type"])),
     lastService: normalizeText(fieldValue(item.fields, ["Last_x0020_Service_x0020_Date", "Last Service Date"])),
     nextService: normalizeText(fieldValue(item.fields, ["Next_x0020_Service_x0020_Due", "Next Service Due"])),
     daysToService: normalizeText(fieldValue(item.fields, ["Days_x0020_to_x0020_Service", "Days to Service"])),
     notes: normalizeText(fieldValue(item.fields, ["Notes"])),
-    assignedPerson: "",
-    hourlyRate: "",
-    insuranceExpiry: "",
-    registrationExpiry: "",
-    permitExpiry: ""
+    assignedPerson: normalizeText(fieldValue(item.fields, ["AssignedPerson"])),
+    hourlyRate: normalizeText(fieldValue(item.fields, ["HourlyRate"])),
+    idleHours: normalizeText(fieldValue(item.fields, ["IdleHours"])),
+    insuranceExpiry: normalizeText(fieldValue(item.fields, ["InsuranceExpiry"])),
+    registrationExpiry: normalizeText(fieldValue(item.fields, ["RegistrationExpiry"])),
+    permitName: normalizeText(fieldValue(item.fields, ["PermitName"])),
+    permitExpiry: normalizeText(fieldValue(item.fields, ["PermitExpiry"]))
   }));
 }
 function mapMaintenanceLocations(items){
   return items.map(item => ({
     company: normalizeText(fieldValue(item.fields, ["Company"])),
-    name: normalizeText(fieldValue(item.fields, ["Location_x0020_Name", "Location Name"])),
+    name: normalizeText(fieldValue(item.fields, ["Location_x0020_Name", "Location Name", "Title"])),
     address: normalizeText(fieldValue(item.fields, ["Address"])),
     contact: normalizeText(fieldValue(item.fields, ["Contact"])),
     phone: normalizeText(fieldValue(item.fields, ["Phone"])),
     email: normalizeText(fieldValue(item.fields, ["Email"])),
+    hourlyLabourRate: Number(fieldValue(item.fields, ["HourlyLabourRate"], 0)) || 0,
+    dealer: normalizeText(fieldValue(item.fields, ["Dealer"])) === "Yes",
     notes: normalizeText(fieldValue(item.fields, ["Notes"]))
   }));
 }
 function mapMaintenanceRecords(items){
   return items.map(item => ({
     company: normalizeText(fieldValue(item.fields, ["Company"])),
+    truck: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     truckId: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     serviceDate: normalizeText(fieldValue(item.fields, ["Service_x0020_Date", "Service Date"])),
     serviceType: normalizeText(fieldValue(item.fields, ["Service_x0020_Type", "Service Type"])),
@@ -2043,14 +2052,37 @@ function mapMaintenanceRecords(items){
     cost: normalizeText(fieldValue(item.fields, ["Cost"])),
     partReplaced: normalizeText(fieldValue(item.fields, ["Parts_x0020_Replaced", "Parts Replaced"])),
     nextServiceDue: normalizeText(fieldValue(item.fields, ["Next_x0020_Service_x0020_Due", "Next Service Due"])),
+    assignedTo: normalizeText(fieldValue(item.fields, ["AssignedTo"])),
+    location: normalizeText(fieldValue(item.fields, ["Location"])),
+    type: normalizeText(fieldValue(item.fields, ["Type"])),
+    linkedIncident: normalizeText(fieldValue(item.fields, ["LinkedIncident"])),
+    issueCategory: normalizeText(fieldValue(item.fields, ["IssueCategory"])),
+    description: normalizeText(fieldValue(item.fields, ["Description"])),
+    downtimeStart: normalizeText(fieldValue(item.fields, ["DowntimeStart"])),
+    downtimeEnd: normalizeText(fieldValue(item.fields, ["DowntimeEnd"])),
+    repairStart: normalizeText(fieldValue(item.fields, ["RepairStart"])),
+    repairEnd: normalizeText(fieldValue(item.fields, ["RepairEnd"])),
+    partsOrdered: normalizeText(fieldValue(item.fields, ["PartsOrdered"])),
+    partsArrived: normalizeText(fieldValue(item.fields, ["PartsArrived"])),
+    invoiceNumber: normalizeText(fieldValue(item.fields, ["InvoiceNumber"])),
+    invoiceDate: normalizeText(fieldValue(item.fields, ["InvoiceDate"])),
+    invoicePartsCost: Number(fieldValue(item.fields, ["InvoicePartsCost"], 0)) || 0,
+    invoiceLabourCost: Number(fieldValue(item.fields, ["InvoiceLabourCost"], 0)) || 0,
+    coolant: normalizeText(fieldValue(item.fields, ["Coolant"])),
+    hydraulicOil: normalizeText(fieldValue(item.fields, ["HydraulicOil"])),
+    motorOil: normalizeText(fieldValue(item.fields, ["MotorOil"])),
     notes: normalizeText(fieldValue(item.fields, ["Notes"]))
   }));
 }
 function mapLifts(items){
   return items.map(item => ({
     company: normalizeText(fieldValue(item.fields, ["Company"])),
+    date: normalizeText(fieldValue(item.fields, ["Date"])),
+    operator: normalizeText(fieldValue(item.fields, ["Operator"])),
+    unit: normalizeText(fieldValue(item.fields, ["Unit"])),
+    liftType: normalizeText(fieldValue(item.fields, ["LiftType", "Lift_x0020_Type", "Lift Type"])),
+    liftCount: Number(fieldValue(item.fields, ["LiftCount"], 0)) || 0,
     liftId: normalizeText(fieldValue(item.fields, ["Lift_x0020_ID", "Lift ID"])),
-    liftType: normalizeText(fieldValue(item.fields, ["Lift_x0020_Type", "Lift Type"])),
     capacity: normalizeText(fieldValue(item.fields, ["Capacity_x0020_Tons", "Capacity Tons"])),
     location: normalizeText(fieldValue(item.fields, ["Location"])),
     lastInspected: normalizeText(fieldValue(item.fields, ["Last_x0020_Inspected", "Last Inspected"])),
@@ -2645,7 +2677,7 @@ async function saveCOROverride(){
     return;
   }
   try {
-    const fields = {Title: key, status, reason};
+    const fields = {Title: key, Company: company, Section: section, Status: status, "Override_x0020_Notes": reason};
     const existing = await getListItems("corOverrides");
     const item = existing.find(x => fieldValue(x.fields, ["Title"]) === key);
     if(!item){
@@ -2975,7 +3007,7 @@ async function saveEditedVehicleDefect(){
   }
   try {
     const defect = db.vehicleInspections[index];
-    const fields = {dateReported: defect.dateReported, reportedBy: defect.reportedBy, unit: defect.unit, plate: defect.plate, severity: defect.severity, outOfService: defect.outOfService, assigned: defect.assigned, defect: defect.defect, repairDue: defect.repairDue, dateRepaired: defect.dateRepaired, repairNotes: defect.repairNotes};
+    const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
     if(!defect.id){
       const result = await graphCreateItem("vehicleInspections", fields);
       defect.id = result.id;
@@ -3185,7 +3217,7 @@ async function saveEditedTruckProfile(){
   }
   try {
     const truck = db.truckProfiles[index];
-    const fields = {unit: truck.unit, plate: truck.plate, make: truck.make, model: truck.model, year: truck.year, vin: truck.vin, crew: truck.crew, person: truck.person, hourlyRate: truck.hourlyRate, idleHours: truck.idleHours, insuranceExpiry: truck.insuranceExpiry, registrationExpiry: truck.registrationExpiry, permitName: truck.permitName, permitExpiry: truck.permitExpiry};
+    const fields = {Title: truck.unit || "Truck", Company: truck.company, "Truck_x0020_ID": truck.unit, Year: truck.year, Make: truck.make, Model: truck.model, Plate: truck.plate, VIN: truck.vin, Crew: truck.crew, AssignedPerson: truck.person, HourlyRate: Number(truck.hourlyRate) || 0, IdleHours: Number(truck.idleHours) || 0, InsuranceExpiry: truck.insuranceExpiry, RegistrationExpiry: truck.registrationExpiry, PermitName: truck.permitName, PermitExpiry: truck.permitExpiry};
     if(!truck.id){
       const result = await graphCreateItem("truckProfiles", fields);
       truck.id = result.id;
@@ -3289,7 +3321,7 @@ async function saveEditedLift(){
   }
   try {
     const lift = db.lifts[index];
-    const fields = {date: lift.date, operator: lift.operator, unit: lift.unit, liftType: lift.liftType, liftCount: lift.liftCount};
+    const fields = {Title: `${lift.date || ""} ${lift.unit || lift.liftType || ""}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: Number(lift.liftCount) || 0};
     if(!lift.id){
       const result = await graphCreateItem("lifts", fields);
       lift.id = result.id;
@@ -3471,7 +3503,7 @@ async function saveEditedMaintLocation(){
     return;
   }
   try {
-    const fields = {Title: loc.name, address: loc.address, hourlyLabourRate: loc.hourlyLabourRate, dealer: loc.dealer};
+    const fields = {Title: loc.name, Company: loc.company, "Location_x0020_Name": loc.name, Address: loc.address, HourlyLabourRate: Number(loc.hourlyLabourRate) || 0, Dealer: loc.dealer ? "Yes" : "No"};
     if(!loc.id){
       const result = await graphCreateItem("maintenanceLocations", fields);
       loc.id = result.id;
@@ -3650,7 +3682,7 @@ async function saveEditedMaintRecord(){
     return;
   }
   try {
-    const fields = {truck: rec.truck, assignedTo: rec.assignedTo, location: rec.location, type: rec.type, linkedIncident: rec.linkedIncident, issueCategory: rec.issueCategory, description: rec.description, downtimeStart: rec.downtimeStart, downtimeEnd: rec.downtimeEnd, repairStart: rec.repairStart, repairEnd: rec.repairEnd, partsOrdered: rec.partsOrdered, partsArrived: rec.partsArrived, invoiceNumber: rec.invoiceNumber, invoiceDate: rec.invoiceDate, invoicePartsCost: rec.invoicePartsCost, invoiceLabourCost: rec.invoiceLabourCost, coolant: rec.coolant, hydraulicOil: rec.hydraulicOil, motorOil: rec.motorOil};
+    const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
     if(!rec.id){
       const result = await graphCreateItem("maintenanceRecords", fields);
       rec.id = result.id;
@@ -3854,7 +3886,7 @@ async function saveEditedToolbox(){
   }
   try {
     const toolbox = db.toolbox[index];
-    const fields = {date: toolbox.date, presenter: toolbox.presenter, topic: toolbox.topic, attendees: toolbox.attendees.join(";"), notes: toolbox.notes, documentReviewed: toolbox.documentReviewed, documentIndex: toolbox.documentIndex};
+    const fields = {Title: toolbox.topic || "Toolbox Talk", Company: toolbox.company, Date: toolbox.date, Topic: toolbox.topic, Presenter: toolbox.presenter, Attendees: toolbox.attendees.join(";"), Notes: toolbox.notes, DocumentReviewed: toolbox.documentReviewed, DocumentIndex: toolbox.documentIndex};
     if(!toolbox.id){
       const result = await graphCreateItem("toolbox", fields);
       toolbox.id = result.id;
@@ -4215,12 +4247,12 @@ async function saveEditedPerson(){
   try {
     const person = db.people[index];
     if(!person.id){
-      const fields = {Title: person.name, department: person.department, status: person.status, roles: person.roles.join(";")};
+      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, Roles: person.roles.join(";")};
       const result = await graphCreateItem("people", fields);
       person.id = result.id;
       person.etag = result.etag;
     } else {
-      const fields = {Title: person.name, department: person.department, status: person.status, roles: person.roles.join(";")};
+      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, Roles: person.roles.join(";")};
       await graphUpdateItem("people", person.id, fields, person.etag);
       logAuditEntry({user: "current_user", list: "people", itemId: person.id, action: "UPDATE", delta: fields});
     }
@@ -4305,7 +4337,7 @@ async function saveEditedTraining(){
     }
     try {
       const training = db.training[index];
-      const fields = {employee: training.employee, course: training.course, status: training.status, complete: training.complete, expiry: training.expiry, notes: training.notes, documentPresent: training.documentPresent, documentName: training.documentName, addedBy: training.addedBy, dateAdded: training.dateAdded};
+      const fields = {Title: training.employee || "Training", Company: training.company, Employee: training.employee, Course: training.course, "Completion_x0020_Date": training.complete, "Expiry_x0020_Date": training.expiry, Notes: training.notes, Status: training.status, DocumentPresent: training.documentPresent, DocumentName: training.documentName, AddedBy: training.addedBy, DateAdded: training.dateAdded};
       if(!training.id){
         const result = await graphCreateItem("training", fields);
         training.id = result.id;
@@ -4438,7 +4470,7 @@ async function saveEditedDocument(){
   }
   try {
     const doc = db.documents[index];
-    const fields = {Title: doc.name, number: doc.number, revision: doc.revision, owner: doc.owner, type: doc.type, effective: doc.effective, lastReviewed: doc.lastReviewed, review: doc.review, manual: doc.manual, cor: doc.cor, status: doc.status, archivedDate: doc.archivedDate, notes: doc.notes, filePresent: doc.filePresent, fileName: doc.fileName, addedBy: doc.addedBy, dateAdded: doc.dateAdded};
+    const fields = {Title: doc.name, Company: doc.company, "COR_x0020_Section": doc.cor, "Document_x0020_Type": doc.type, "Last_x0020_Review_x0020_Date": doc.lastReviewed, "Next_x0020_Review_x0020_Due": doc.review, Number: doc.number, Revision: doc.revision, Owner: doc.owner, Effective: doc.effective, Status: doc.status, ArchivedDate: doc.archivedDate, Notes: doc.notes, ManualSection: doc.manual, FilePresent: doc.filePresent, FileName: doc.fileName, AddedBy: doc.addedBy, DateAdded: doc.dateAdded};
     if(!doc.id){
       const result = await graphCreateItem("documents", fields);
       doc.id = result.id;
@@ -4597,15 +4629,17 @@ async function saveEditedInspection(){
   try {
     const inspection = db.inspections[index];
     const fields = {
-      date: inspection.date,
-      crew: inspection.crew,
-      location: inspection.location,
-      inspector: inspection.inspector,
-      notes: inspection.notes,
-      proofPresent: inspection.proofPresent,
-      proofDescription: inspection.proofDescription,
-      addedBy: inspection.addedBy,
-      dateAdded: inspection.dateAdded
+      Title: inspection.location || "Inspection",
+      Company: inspection.company,
+      "Inspection_x0020_Date": inspection.date,
+      Area: inspection.location,
+      Inspector: inspection.inspector,
+      Findings: inspection.notes,
+      Crew: inspection.crew,
+      ProofPresent: inspection.proofPresent,
+      ProofDescription: inspection.proofDescription,
+      AddedBy: inspection.addedBy,
+      DateAdded: inspection.dateAdded
     };
     if(!inspection.id){
       const result = await graphCreateItem("inspections", fields);
@@ -4698,24 +4732,26 @@ async function saveEditedIncident(){
     }
     const incident = db.incidents[index];
     const fields = {
-      date: incident.date,
-      incidentNumber: incident.incidentNumber,
-      employee: incident.employee,
-      location: incident.location,
-      unit: incident.unit,
-      severity: incident.severity,
-      liftType: incident.liftType,
-      description: incident.description,
-      photosPresent: incident.photosPresent,
-      videoPresent: incident.videoPresent,
-      proofDescription: incident.proofDescription,
-      immediateCause: (incident.immediateCause || []).join(", "),
-      immediateCauseNotes: incident.immediateCauseNotes,
-      basicCause: (incident.basicCause || []).join(", "),
-      basicCauseNotes: incident.basicCauseNotes,
-      issueTags: (incident.issueTags || []).join(", "),
-      addedBy: incident.addedBy,
-      dateAdded: incident.dateAdded
+      Title: incident.incidentNumber || "Incident",
+      Company: incident.company,
+      "Incident_x0020_ID": incident.incidentNumber,
+      Date: incident.date,
+      "Employee_x0020__x0028_Injured_x0029_": incident.employee,
+      Location: incident.location,
+      Unit: incident.unit,
+      "Investigation_x0020_Status": incident.severity,
+      LiftType: incident.liftType,
+      Description: incident.description,
+      PhotosPresent: incident.photosPresent,
+      VideoPresent: incident.videoPresent,
+      ProofDescription: incident.proofDescription,
+      "Immediate_x0020_Causes": (incident.immediateCause || []).join(", "),
+      ImmediateCauseNotes: incident.immediateCauseNotes,
+      "Basic_x0020_Causes": (incident.basicCause || []).join(", "),
+      BasicCauseNotes: incident.basicCauseNotes,
+      IssueTags: (incident.issueTags || []).join(", "),
+      "Reported_x0020_By": incident.addedBy,
+      DateAdded: incident.dateAdded
     };
     if(!incident.id){
       const result = await graphCreateItem("incidents", fields);
@@ -4775,16 +4811,18 @@ async function saveEditedHazard(){
   try {
     const hazard = db.hazard[index];
     const fields = {
-      date: hazard.date,
-      task: hazard.task,
-      location: hazard.location,
-      leader: hazard.leader,
-      hazards: hazard.hazards,
-      controls: hazard.controls,
-      proofPresent: hazard.proofPresent,
-      proofDescription: hazard.proofDescription,
-      addedBy: hazard.addedBy,
-      dateAdded: hazard.dateAdded
+      Title: hazard.task || "Hazard",
+      Company: hazard.company,
+      "Assessment_x0020_Date": hazard.date,
+      "Area_x002f_Process": hazard.task,
+      Location: hazard.location,
+      "Assigned_x0020_To": hazard.leader,
+      "Hazard_x0020_Type": hazard.hazards,
+      Controls: hazard.controls,
+      ProofPresent: hazard.proofPresent,
+      ProofDescription: hazard.proofDescription,
+      AddedBy: hazard.addedBy,
+      DateAdded: hazard.dateAdded
     };
     if(!hazard.id){
       const result = await graphCreateItem("hazard", fields);
@@ -4838,14 +4876,15 @@ async function saveEditedCommittee(){
   try {
     const committee = db.committee[index];
     const fields = {
-      name: committee.name,
-      role: committee.role,
-      due: committee.due,
-      notes: committee.notes,
-      proofPresent: committee.proofPresent,
-      proofDescription: committee.proofDescription,
-      addedBy: committee.addedBy,
-      dateAdded: committee.dateAdded
+      Title: committee.name || "Committee Meeting",
+      Company: committee.company,
+      Role: committee.role,
+      "Next_x0020_Meeting_x0020_Date": committee.due,
+      "Decisions_x002f_Actions": committee.notes,
+      ProofPresent: committee.proofPresent,
+      ProofDescription: committee.proofDescription,
+      AddedBy: committee.addedBy,
+      DateAdded: committee.dateAdded
     };
     if(!committee.id){
       const result = await graphCreateItem("committee", fields);
