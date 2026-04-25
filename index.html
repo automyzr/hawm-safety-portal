@@ -2391,6 +2391,7 @@ async function runMigration(){
           continue;
         }
         try {
+          if(!FEATURE_FLAGS['write_enabled_'+listSlug]){ continue; }
           const fields = { ...item };
           delete fields.id;
           const result = await graphCreateItem(listSlug, fields);
@@ -4865,7 +4866,7 @@ async function saveEditedHazard(){
   for(const file of Array.from(byId("hazard_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
   db.hazard[index] = {...db.hazard[index], date:byId("hazard_edit_date").value, task:byId("hazard_edit_task").value.trim(), location:byId("hazard_edit_location").value.trim(), leader:byId("hazard_edit_leader").value.trim(), hazards:byId("hazard_edit_hazards").value, controls:byId("hazard_edit_controls").value, proofPresent:byId("hazard_edit_proof_present").value, proofDescription:byId("hazard_edit_proof_desc").value.trim(), addedBy:byId("hazard_edit_proof_by").value.trim(), dateAdded:byId("hazard_edit_proof_date").value, uploads:[...existing, ...added]};
   persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_hazards){
+  if(!FEATURE_FLAGS.write_enabled_hazard){
     showToast("Read-only mode. Changes saved locally only.", "info");
     clearHazardEditor(); rebuildAll();
     return;
