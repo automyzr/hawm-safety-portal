@@ -14,10 +14,6 @@
   },
   "routes": [
     {
-      "route": "/",
-      "rewrite": "/index.html"
-    },
-    {
       "route": "/*",
       "allowedRoles": ["authenticated"]
     }
@@ -28,6 +24,6 @@
   },
   "globalHeaders": {
     "Cache-Control": "public, max-age=600",
-    "Content-Security-Policy": "default-src 'self' https:; script-src 'self' 'unsafe-inline' https://alcdn.msauth.net https://login.microsoftonline.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com"
+    "Content-Security-Policy": "default-src 'self' https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://login.microsoftonline.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com; img-src 'self' data:"
   }
 }
