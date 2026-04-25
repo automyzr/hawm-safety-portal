@@ -2946,6 +2946,26 @@ async function addVehicleDefect(){
   };
   db.correctiveActions.push(caRecord);
 
+  // Persist auto-CA to SP
+  const caFields = {
+    Title: caRecord.action || caRecord.reference || "Vehicle Defect CA",
+    Status: caRecord.status || 'Open',
+    "Source_x0020_Type": caRecord.sourceType || '',
+    "Triggered_x0020_By": caRecord.source || '',
+    "Related_x0020_Incident_x002f_Inspection": caRecord.reference || '',
+    Priority: caRecord.priority || 'Medium',
+    "Assigned_x0020_To": caRecord.assigned || '',
+    "Due_x0020_Date": caRecord.due || '',
+    Description: caRecord.action || '',
+    "Completion_x0020_Date": caRecord.completionDate || '',
+    "Evidence_x002f_Notes": caRecord.completionNotes || '',
+    Verification: caRecord.verification || '',
+    "Status_x0020_Auto_x003f_": caRecord.auto ? 'Yes' : 'No',
+    "Escalation_x0020_Notes": caRecord.escalation || '',
+    Company: caRecord.company || ''
+  };
+  await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', caRecord, caFields);
+
   clearPortalFilePicker("vehicle_upload_files","vehicle_upload_preview");
   rebuildAll();
   const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
@@ -3016,6 +3036,17 @@ async function saveEditedVehicleDefect(){
       db.correctiveActions[caIndex].status = "Closed";
       db.correctiveActions[caIndex].completionDate = newDateRepaired;
       db.correctiveActions[caIndex].completionNotes = repairNotes;
+
+      // Persist CA update to SP
+      if(FEATURE_FLAGS.write_enabled_correctiveActions && db.correctiveActions[caIndex].id){
+        const ca = db.correctiveActions[caIndex];
+        const caUpdateFields = {
+          Status: ca.status || 'Open',
+          "Completion_x0020_Date": ca.completionDate || '',
+          "Evidence_x002f_Notes": ca.completionNotes || ''
+        };
+        await graphUpdateItem('correctiveActions', ca.id, caUpdateFields);
+      }
     }
   }
 
