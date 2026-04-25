@@ -800,7 +800,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Assigned To</label><input id="ca_assigned"></div>
           <div class="field"><label>Due Date</label><input id="ca_due" type="date"></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addManualCA()">Add Manual Corrective Action</button></div>
+        <div class="footer-note"><button class="btn" onclick="(async()=>{ try { await addManualCA(); } catch(e){ console.error('addManualCA failed', e); } })()">Add Manual Corrective Action</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="caTable"></table></div></div>
     </section>
