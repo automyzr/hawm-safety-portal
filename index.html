@@ -2038,10 +2038,10 @@ function mapTruckProfiles(items){
     assignedPerson: normalizeText(fieldValue(item.fields, ["AssignedPerson"])),
     hourlyRate: normalizeText(fieldValue(item.fields, ["HourlyRate"])),
     idleHours: normalizeText(fieldValue(item.fields, ["IdleHours"])),
-    insuranceExpiry: normalizeText(fieldValue(item.fields, ["InsuranceExpiry"])),
-    registrationExpiry: normalizeText(fieldValue(item.fields, ["RegistrationExpiry"])),
+    insuranceExpiry: item.fields.InsuranceExpiry || item.fields.Insurance_x0020_Expiry || item.fields["Insurance Expiry"] || null,
+    registrationExpiry: item.fields.RegistrationExpiry || item.fields.Registration_x0020_Expiry || item.fields["Registration Expiry"] || null,
     permitName: normalizeText(fieldValue(item.fields, ["PermitName"])),
-    permitExpiry: normalizeText(fieldValue(item.fields, ["PermitExpiry"]))
+    permitExpiry: item.fields.PermitExpiry || item.fields.Permit_x0020_Expiry || item.fields["Permit Expiry"] || null
   }));
 }
 function mapMaintenanceLocations(items){
@@ -3048,7 +3048,7 @@ async function saveEditedVehicleDefect(){
 }
 
 // Check truck expiry dates and auto-create CAs for expirations within 30 days
-function checkTruckExpiriesAndCreateCAs(truck, company) {
+async function checkTruckExpiriesAndCreateCAs(truck, company) {
   const TRUCK_EXPIRY_WINDOW_DAYS = 30;
 
   const expiryFields = [
@@ -3091,7 +3091,7 @@ function checkTruckExpiriesAndCreateCAs(truck, company) {
 
       if (!existingCA) {
         // Create new CA
-        db.correctiveActions.push({
+        const ca = {
           company,
           sourceType: "TruckExpiry",
           source: truck.id,
@@ -3115,7 +3115,28 @@ function checkTruckExpiriesAndCreateCAs(truck, company) {
           createdDate: todayISO(),
           sourceDate: todayISO(),
           truckExpiryType: type
-        });
+        };
+        db.correctiveActions.push(ca);
+
+        // Persist to SP
+        const fields = {
+          Title: ca.reference || `CA TruckExpiry`,
+          Status: ca.status || 'Open',
+          "Source_x0020_Type": ca.sourceType || '',
+          "Triggered_x0020_By": ca.source || '',
+          "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
+          Priority: ca.priority || 'Medium',
+          "Assigned_x0020_To": ca.assigned || '',
+          "Due_x0020_Date": ca.due || '',
+          Description: ca.action || '',
+          "Completion_x0020_Date": ca.completionDate || '',
+          "Evidence_x002f_Notes": ca.completionNotes || '',
+          Verification: ca.verification || '',
+          "Status_x0020_Auto_x003f_": ca.evidencePresent ? 'Yes' : 'No',
+          "Escalation_x0020_Notes": ca.escalation || '',
+          Company: ca.company || ''
+        };
+        await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, fields);
       }
     }
   }
@@ -3155,7 +3176,7 @@ async function addTruckProfile(){
   db.truckProfiles.push(truck);
   const fields = {Title: truck.unit || "Truck", Company: truck.company, "Truck_x0020_ID": truck.unit, Year: truck.year, Make: truck.make, Model: truck.model, Plate: truck.plate, VIN: truck.vin, Crew: truck.crew, AssignedPerson: truck.person, HourlyRate: Number(truck.hourlyRate) || 0, IdleHours: Number(truck.idleHours) || 0, InsuranceExpiry: truck.insuranceExpiry, RegistrationExpiry: truck.registrationExpiry, PermitName: truck.permitName, PermitExpiry: truck.permitExpiry};
   await syncCreateToSP("truckProfiles", "write_enabled_truckProfiles", truck, fields);
-  checkTruckExpiriesAndCreateCAs(truck, company);
+  await checkTruckExpiriesAndCreateCAs(truck, company);
   clearTruckEditor();
   rebuildAll();
 }
@@ -3230,7 +3251,7 @@ async function saveEditedTruckProfile(){
     permitUploads: [...existingPermit, ...addedPermit]
   };
 
-  checkTruckExpiriesAndCreateCAs(db.truckProfiles[index], db.truckProfiles[index].company);
+  await checkTruckExpiriesAndCreateCAs(db.truckProfiles[index], db.truckProfiles[index].company);
   persistLocalSnapshot();
   if(!FEATURE_FLAGS.write_enabled_truckProfiles){
     showToast("Read-only mode. Changes saved locally only.", "info");
@@ -5260,7 +5281,7 @@ setIncidentDefaultDue();
 bootstrapApp();
 
 // DEV: Test truck expiry CA creation
-window.TEST_TRUCK_EXPIRY_CA = () => {
+window.TEST_TRUCK_EXPIRY_CA = async () => {
   const testTruck = {
     id: "test_truck_" + Date.now(),
     company: selectedCompany(),
@@ -5273,7 +5294,7 @@ window.TEST_TRUCK_EXPIRY_CA = () => {
   };
   console.log("TEST: Creating truck with insurance expiry 15 days out:", testTruck.insuranceExpiry);
   const beforeCount = db.correctiveActions.filter(c => c.sourceType === "TruckExpiry").length;
-  checkTruckExpiriesAndCreateCAs(testTruck, testTruck.company);
+  await checkTruckExpiriesAndCreateCAs(testTruck, testTruck.company);
   const afterCount = db.correctiveActions.filter(c => c.sourceType === "TruckExpiry").length;
   console.log(`TEST: CAs before: ${beforeCount}, after: ${afterCount}. Expected: +1.`);
   if (afterCount === beforeCount + 1) {
