@@ -4970,9 +4970,29 @@ async function saveEditedCommittee(){
   clearCommitteeEditor(); rebuildAll();
 }
 
-function addManualCA(){
+async function addManualCA(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-  db.correctiveActions.push({company, sourceType:"Manual", source:byId("ca_source").value.trim(), reference:byId("ca_reference").value.trim(), priority:byId("ca_priority").value, assigned:byId("ca_assigned").value.trim(), due:byId("ca_due").value, action:byId("ca_action").value, auto:false, locked:false, status:"Open", createdDate:todayISO(), sourceDate:todayISO(), completionDate:"", completionNotes:"", evidencePresent:"No", evidenceDescription:"", evidenceAddedBy:"", evidenceDateAdded:"", verifiedBy:"", verifiedEffective:false, escalation:""});
+  const ca = {company, sourceType:"Manual", source:byId("ca_source").value.trim(), reference:byId("ca_reference").value.trim(), priority:byId("ca_priority").value, assigned:byId("ca_assigned").value.trim(), due:byId("ca_due").value, action:byId("ca_action").value, auto:false, locked:false, status:"Open", createdDate:todayISO(), sourceDate:todayISO(), completionDate:"", completionNotes:"", evidencePresent:"No", evidenceDescription:"", evidenceAddedBy:"", evidenceDateAdded:"", verifiedBy:"", verifiedEffective:false, escalation:""};
+  db.correctiveActions.push(ca);
+  const fields = {
+    Title: ca.reference || `CA Manual`,
+    Status: ca.status || 'Open',
+    "Source_x0020_Type": ca.sourceType || '',
+    "Triggered_x0020_By": ca.source || '',
+    "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
+    Priority: ca.priority || 'Medium',
+    "Assigned_x0020_To": ca.assigned || '',
+    "Due_x0020_Date": ca.due || '',
+    Description: ca.action || '',
+    "Completion_x0020_Date": ca.completionDate || '',
+    "Evidence_x002f_Notes": ca.completionNotes || '',
+    Verification: ca.verification || '',
+    "Status_x0020_Auto_x003f_": ca.evidencePresent ? 'Yes' : 'No',
+    "Escalation_x0020_Notes": ca.escalation || '',
+    Company: ca.company || ''
+  };
+  await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, fields);
+  logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: ca.id, action: 'CREATE', delta: fields});
   rebuildAll();
 }
 async function saveEditedCA(caId, updates){
