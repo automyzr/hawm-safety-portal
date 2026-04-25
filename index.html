@@ -3690,6 +3690,19 @@ async function addMaintRecord(){
     if(!db.correctiveActions) db.correctiveActions=[];
     const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:"Maintenance",company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
     db.correctiveActions.push(ca);
+    // Persist auto-CA to SP
+    const caFields = {
+      Title: ca.action || ca.reference || "Maintenance CA",
+      Status: ca.status || 'Open',
+      "Source_x0020_Type": ca.sourceType || '',
+      "Triggered_x0020_By": ca.source || '',
+      "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
+      Priority: ca.priority || 'Medium',
+      "Assigned_x0020_To": ca.assigned || '',
+      Description: ca.action || '',
+      Company: ca.company || ''
+    };
+    await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, caFields);
   }
 
   if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
