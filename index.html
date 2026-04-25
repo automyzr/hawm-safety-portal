@@ -905,7 +905,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Motor Oil (L)</label><input id="maint_motorOil" type="number" step="0.01"></div>
           <div class="field"><label>Uploads</label><input id="maint_uploads" type="file" multiple></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addMaintRecord()">Add</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
+        <div class="footer-note"><button class="btn" onclick="(async()=>{ try { await addMaintRecord(); } catch(e){ console.error('addMaintRecord failed', e); } })()">Add</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
       </div>
       <div class="card" id="maintRecordEditorCard" style="display:none;">
         <h3>Edit Maintenance Record</h3>
@@ -933,7 +933,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Motor Oil (L)</label><input id="maint_edit_motorOil" type="number" step="0.01"></div>
           <div class="field"><label>Uploads</label><input id="maint_edit_uploads" type="file" multiple></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedMaintRecord()">Save Changes</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
+        <div class="footer-note"><button class="btn" onclick="(async()=>{ try { await saveEditedMaintRecord(); } catch(e){ console.error('saveEditedMaintRecord failed', e); } })()">Save Changes</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="maintRecordsTable"></table></div></div>
     </section>
