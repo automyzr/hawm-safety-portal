@@ -5158,7 +5158,7 @@ async function addIncident(){
     };
     db.incidents.push(entity);
     clearActionBlocks("incident"); clearPortalFilePicker("incident_upload_files","incident_upload_preview"); setIncidentDefaultDue(); rebuildAll();
-    const fields = {Title: entity.incidentNumber || "Incident", Company: entity.company, "Incident_x0020_ID": entity.incidentNumber, Date: entity.date, "Employee_x0020__x0028_Injured_x0029_": entity.employee, Location: entity.location, Unit: entity.unit, "Investigation_x0020_Status": entity.severity, LiftType: entity.liftType, Description: entity.description, PhotosPresent: entity.photosPresent, VideoPresent: entity.videoPresent, ProofDescription: entity.proofDescription, "Immediate_x0020_Causes": (entity.immediateCause || []).join(", "), ImmediateCauseNotes: entity.immediateCauseNotes, "Basic_x0020_Causes": (entity.basicCause || []).join(", "), BasicCauseNotes: entity.basicCauseNotes, IssueTags: (entity.issueTags || []).join(", "), "Reported_x0020_By": entity.addedBy, DateAdded: entity.dateAdded};
+    const fields = {Title: entity.incidentNumber || "Incident", Company: entity.company, "Incident_x0020_ID": entity.incidentNumber, Date: entity.date, "Employee_x0020__x0028_Injured_x0029_": entity.employee, Location: entity.location, Unit: entity.unit, "Investigation_x0020_Status": entity.severity, LiftType: entity.liftType, Description: entity.description, PhotosPresent: entity.photosPresent, VideoPresent: entity.videoPresent, ProofDescription: entity.proofDescription, "Immediate_x0020_Causes": (entity.immediateCause || []).join(", "), ImmediateCauseNotes: entity.immediateCauseNotes, "Basic_x0020_Causes": (entity.basicCause || []).join(", "), BasicCauseNotes: entity.basicCauseNotes, IssueTags: (entity.issueTags || []).join(", "), Witnesses: (entity.witnesses || []).join(", "), "Reported_x0020_By": entity.addedBy, DateAdded: entity.dateAdded};
     await syncCreateToSP("incidents", "write_enabled_incidents", entity, fields);
   } catch(e){ console.error("addIncident error:",e); alert("Failed to add incident: "+e.message); }
 }
@@ -5341,6 +5341,7 @@ async function saveEditedIncident(){
       "Basic_x0020_Causes": (incident.basicCause || []).join(", "),
       BasicCauseNotes: incident.basicCauseNotes,
       IssueTags: (incident.issueTags || []).join(", "),
+      Witnesses: (incident.witnesses || []).join(", "),
       "Reported_x0020_By": incident.addedBy,
       DateAdded: incident.dateAdded
     };
