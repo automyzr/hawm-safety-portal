@@ -1348,6 +1348,7 @@ async function ensureMsalClient(){
   }
   return msalClient;
 }
+let lastReauthToastAt = 0;
 async function getGraphToken(){
   const client = await ensureMsalClient();
   if(!client) throw new Error("MSAL client is not configured. Set HAWM_CONFIG.clientId after app registration.");
@@ -1452,6 +1453,10 @@ async function graphCreateItem(listSlug, fields){
       });
       if(response.status === 401){
         console.log("Create: 401 Unauthorized. Refreshing token and retrying...");
+        if(Date.now() - lastReauthToastAt > 30000){
+          showToast("Session expired; re-authenticating...", "info");
+          lastReauthToastAt = Date.now();
+        }
         const newToken = await getGraphToken();
         const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
           method: "POST",
@@ -1463,6 +1468,7 @@ async function graphCreateItem(listSlug, fields){
           body: JSON.stringify({ fields })
         });
         if(retryResponse.status === 401){
+          showToast("Please sign in again to continue.", "error");
           throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
         }
         if(!retryResponse.ok){
@@ -1551,6 +1557,10 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
       });
       if(response.status === 401){
         console.log("Update: 401 Unauthorized. Refreshing token and retrying...");
+        if(Date.now() - lastReauthToastAt > 30000){
+          showToast("Session expired; re-authenticating...", "info");
+          lastReauthToastAt = Date.now();
+        }
         const newToken = await getGraphToken();
         const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
           method: "PATCH",
@@ -1563,6 +1573,7 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
           body: JSON.stringify(fields)
         });
         if(retryResponse.status === 401){
+          showToast("Please sign in again to continue.", "error");
           throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
         }
         if(retryResponse.status === 412){
@@ -1711,6 +1722,10 @@ async function graphDeleteItem(listSlug, itemId, etag){
       }
       if(response.status === 401){
         console.log("Delete: 401 Unauthorized. Refreshing token and retrying...");
+        if(Date.now() - lastReauthToastAt > 30000){
+          showToast("Session expired; re-authenticating...", "info");
+          lastReauthToastAt = Date.now();
+        }
         const newToken = await getGraphToken();
         const retryResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
           method: "DELETE",
@@ -1725,6 +1740,7 @@ async function graphDeleteItem(listSlug, itemId, etag){
           return { deleted: true };
         }
         if(retryResponse.status === 401){
+          showToast("Please sign in again to continue.", "error");
           throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
         }
         if(retryResponse.status === 404){
