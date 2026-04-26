@@ -160,6 +160,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <input type="file" accept=".json" style="display:none" onchange="importData(event)">
         </label>
         <button class="btn" onclick="rebuildAll()">Refresh Linked Logic</button>
+        <button class="btn secondary" id="logoutBtn" onclick="handleLogout()" title="Sign out and return to login">Sign Out</button>
       </div>
     </div>
 
@@ -1384,6 +1385,32 @@ async function getGraphToken(){
       scopes: HAWM_CONFIG.graphScopes
     });
     return null;
+  }
+}
+async function handleLogout(){
+  try {
+    const client = await ensureMsalClient();
+    if(!client){
+      showToast('Logout: MSAL not configured. Clearing session.', 'warning');
+      Object.keys(db).forEach(k => delete db[k]);
+      sessionStorage.removeItem('msalRedirectAttempts');
+      sessionStorage.clear();
+      window.location.href = window.location.origin;
+      return;
+    }
+    // Clear in-memory db (preserve nothing in JS state)
+    Object.keys(db).forEach(k => delete db[k]);
+    // Clear sessionStorage MSAL redirect attempts (from F.02)
+    sessionStorage.removeItem('msalRedirectAttempts');
+    // Redirect to MSAL logout (Azure clears tokens server-side)
+    await client.logoutRedirect({ postLogoutRedirectUri: window.location.origin });
+  } catch(e){
+    console.error('Logout failed', e);
+    showToast('Sign-out failed. Please clear browser data manually or contact admin.', 'error');
+    // Force-clear and reload as fallback
+    Object.keys(db).forEach(k => delete db[k]);
+    sessionStorage.clear();
+    setTimeout(() => { window.location.href = window.location.origin; }, 1000);
   }
 }
 async function graphCall(path, options={}){
