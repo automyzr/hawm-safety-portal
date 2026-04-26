@@ -47,6 +47,7 @@ jobs:
         env:
           PORTAL_ROOT: ${{ github.workspace }}
           DAILY_TESTS_DOTENV_PATH: ${{ github.workspace }}/.env
+          PROBE_LIST_ID: ${{ secrets.PROBE_LIST_ID }}
         run: node .github/scripts/daily-tests/test-runner.js
         continue-on-error: true
 
