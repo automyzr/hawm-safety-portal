@@ -1362,8 +1362,18 @@ async function getGraphToken(){
       account,
       scopes: HAWM_CONFIG.graphScopes
     });
+    sessionStorage.removeItem('msalRedirectAttempts');
     return tokenResponse.accessToken;
   } catch(e){
+    const now = Date.now();
+    const attempts = JSON.parse(sessionStorage.getItem('msalRedirectAttempts') || '[]')
+        .filter(t => now - t < 5 * 60 * 1000);
+    attempts.push(now);
+    sessionStorage.setItem('msalRedirectAttempts', JSON.stringify(attempts));
+    if(attempts.length > 3){
+      showToast("Sign-in failed after multiple attempts. Please clear cookies or contact admin.", "error");
+      return null;
+    }
     await client.acquireTokenRedirect({
       account,
       scopes: HAWM_CONFIG.graphScopes
