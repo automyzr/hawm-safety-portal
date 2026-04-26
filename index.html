@@ -1366,8 +1366,13 @@ async function getGraphToken(){
     return tokenResponse.accessToken;
   } catch(e){
     const now = Date.now();
-    const attempts = JSON.parse(sessionStorage.getItem('msalRedirectAttempts') || '[]')
-        .filter(t => now - t < 5 * 60 * 1000);
+    let attempts = [];
+    try {
+        attempts = JSON.parse(sessionStorage.getItem('msalRedirectAttempts') || '[]')
+            .filter(t => now - t < 5 * 60 * 1000);
+    } catch (e) {
+        sessionStorage.removeItem('msalRedirectAttempts');
+    }
     attempts.push(now);
     sessionStorage.setItem('msalRedirectAttempts', JSON.stringify(attempts));
     if(attempts.length > 3){
