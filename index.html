@@ -1053,6 +1053,7 @@ async function nextIncidentNumber(company, dateStr){
   const key = `${company}||${year}`;
   if(!db.incidentCounters) db.incidentCounters = {};
   if(!db.incidentCounterSpItemIds) db.incidentCounterSpItemIds = {};
+  if(!db.corOverrideSpItemIds) db.corOverrideSpItemIds = {};
   db.incidentCounters[key] = (db.incidentCounters[key] || 0) + 1;
   const newValue = db.incidentCounters[key];
 
@@ -2097,10 +2098,13 @@ function mapCorOverrides(items){
     const company = normalizeText(fieldValue(item.fields, ["Company"]));
     const section = normalizeText(fieldValue(item.fields, ["Section", "Title"]));
     if(!company || !section) return acc;
-    acc[`${company}||${section}`] = {
+    const key = `${company}||${section}`;
+    acc[key] = {
       status: normalizeText(fieldValue(item.fields, ["Status"], "Override")),
       reason: normalizeText(fieldValue(item.fields, ["Override_x0020_Notes", "Override Notes"]))
     };
+    if(!db.corOverrideSpItemIds) db.corOverrideSpItemIds = {};
+    if(item.id) db.corOverrideSpItemIds[key] = item.id;
     return acc;
   }, {});
 }
@@ -5628,7 +5632,10 @@ async function saveEditedCOROverride(overrideKey, updates){
     const item = existing.find(x => fieldValue(x.fields, ['Title']) === overrideKey);
     if(!item){
       const result = await graphCreateItem('corOverrides', fields);
-      // Note: SP item id stored but key-based lookup used for local references
+      if(result && result.id) {
+        if(!db.corOverrideSpItemIds) db.corOverrideSpItemIds = {};
+        db.corOverrideSpItemIds[overrideKey] = result.id;
+      }
     } else {
       await graphUpdateItem('corOverrides', item.id, fields, item.etag);
     }
