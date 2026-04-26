@@ -1524,6 +1524,7 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
   let attempt = 0;
   const maxRetries = 4;
   let currentEtag = etag;
+  let hadConflict = false;
   while(attempt < maxRetries){
     try {
       const siteId = await getGraphSiteId();
@@ -1556,6 +1557,8 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
           throw { code: "UNAUTHORIZED", message: "Session expired. Please sign in again." };
         }
         if(retryResponse.status === 412){
+          hadConflict = true;
+          showToast("Item modified by another user; refreshing latest version...", "warn");
           console.log("Update: 412 Precondition Failed (ETag mismatch after auth refresh). Refetching item...");
           const itemResponse = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${itemId}`, {
             method: "GET",
@@ -1585,6 +1588,9 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
           const data = await retryPatchResponse.json();
           console.log(`Update success (after ETag refresh): item ${itemId}`);
           logAuditEntry("UPDATE", listSlug, itemId, fields);
+          if(hadConflict){
+            showToast("✓ Saved (with refresh)", "success");
+          }
           return { id: data.id, etag: data["@odata.etag"] };
         }
         if(!retryResponse.ok){
@@ -1597,6 +1603,8 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
         return { id: data.id, etag: data["@odata.etag"] };
       }
       if(response.status === 412){
+        hadConflict = true;
+        showToast("Item modified by another user; refreshing latest version...", "warn");
         console.log(`Update: 412 Precondition Failed (ETag mismatch). Attempt ${attempt + 1}/3. Refetching item...`);
         if(attempt >= 2){
           throw { code: "CONFLICT", message: "Item was modified by another user. Please refresh and try again." };
@@ -1646,6 +1654,9 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
       const data = await response.json();
       console.log(`Update success: item ${itemId}`);
       logAuditEntry("UPDATE", listSlug, itemId, fields);
+      if(hadConflict){
+        showToast("✓ Saved (with refresh)", "success");
+      }
       return { id: data.id, etag: data["@odata.etag"] };
     } catch(error){
       if(error.code){
