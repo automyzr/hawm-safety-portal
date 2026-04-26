@@ -230,8 +230,10 @@ async function testListSchema(listName, listId, expectedFields, testIndex, env) 
   try {
     const siteId = HAWMTRACKER_SITE_ID;
 
-    // Call Graph API to get columns with expanded sub-properties
-    const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/columns?$select=id,displayName,name,fieldValueType,choice,text,number,dateTime,boolean`;
+    // Call Graph API to get columns
+    // Note: fieldValueType, choice, text, number, dateTime, boolean are returned automatically;
+    // they cannot be specified in $select
+    const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/columns`;
     const response = await get(url, env);
 
     if (response.statusCode !== 200) {
