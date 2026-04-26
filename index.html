@@ -1435,6 +1435,7 @@ async function syncCreateToSP(slug, flagKey, entity, fields){
 async function graphCreateItem(listSlug, fields){
   let attempt = 0;
   const maxRetries = 4;
+  let lastWas5xx = false;
   while(attempt < maxRetries){
     try {
       const siteId = await getGraphSiteId();
@@ -1474,7 +1475,7 @@ async function graphCreateItem(listSlug, fields){
         return { id: data.id, etag: data["@odata.etag"] };
       }
       if(response.status === 403){
-        const msg = "Access denied to this list. Contact admin.";
+        const msg = "Access denied; contact admin.";
         console.error(`Create: 403 Forbidden on ${listSlug}:`, msg);
         showToast(msg, "error");
         throw { code: "FORBIDDEN", message: msg };
@@ -1493,6 +1494,7 @@ async function graphCreateItem(listSlug, fields){
         continue;
       }
       if(response.status >= 500){
+        lastWas5xx = true;
         console.warn(`Create: ${response.status} Server Error. Retrying...`);
         await exponentialBackoff(attempt, 4);
         attempt++;
@@ -1518,6 +1520,12 @@ async function graphCreateItem(listSlug, fields){
       attempt++;
     }
   }
+  if(lastWas5xx){
+    const msg = "Server error — your changes will retry. If this persists, contact admin.";
+    console.error(`Create: Server error exhausted retries (${maxRetries})`);
+    showToast(msg, "error");
+    throw { code: "CREATE_MAX_RETRIES_5xx", message: msg };
+  }
   throw { code: "CREATE_MAX_RETRIES", message: "Max retries exceeded for item creation" };
 }
 async function graphUpdateItem(listSlug, itemId, fields, etag){
@@ -1525,6 +1533,7 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
   const maxRetries = 4;
   let currentEtag = etag;
   let hadConflict = false;
+  let lastWas5xx = false;
   while(attempt < maxRetries){
     try {
       const siteId = await getGraphSiteId();
@@ -1623,7 +1632,7 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
         continue;
       }
       if(response.status === 403){
-        const msg = "Access denied to this list. Contact admin.";
+        const msg = "Access denied; contact admin.";
         console.error(`Update: 403 Forbidden on ${listSlug}:`, msg);
         showToast(msg, "error");
         throw { code: "FORBIDDEN", message: msg };
@@ -1642,6 +1651,7 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
         continue;
       }
       if(response.status >= 500){
+        lastWas5xx = true;
         console.warn(`Update: ${response.status} Server Error. Retrying...`);
         await exponentialBackoff(attempt, 4);
         attempt++;
@@ -1670,11 +1680,18 @@ async function graphUpdateItem(listSlug, itemId, fields, etag){
       attempt++;
     }
   }
+  if(lastWas5xx){
+    const msg = "Server error — your changes will retry. If this persists, contact admin.";
+    console.error(`Update: Server error exhausted retries (${maxRetries})`);
+    showToast(msg, "error");
+    throw { code: "UPDATE_MAX_RETRIES_5xx", message: msg };
+  }
   throw { code: "UPDATE_MAX_RETRIES", message: "Max retries exceeded for item update" };
 }
 async function graphDeleteItem(listSlug, itemId, etag){
   let attempt = 0;
   const maxRetries = 4;
+  let lastWas5xx = false;
   while(attempt < maxRetries){
     try {
       const siteId = await getGraphSiteId();
@@ -1724,7 +1741,7 @@ async function graphDeleteItem(listSlug, itemId, etag){
         return { deleted: true };
       }
       if(response.status === 403){
-        const msg = "Access denied to this list. Contact admin.";
+        const msg = "Access denied; contact admin.";
         console.error(`Delete: 403 Forbidden on ${listSlug}:`, msg);
         showToast(msg, "error");
         throw { code: "FORBIDDEN", message: msg };
@@ -1738,6 +1755,7 @@ async function graphDeleteItem(listSlug, itemId, etag){
         continue;
       }
       if(response.status >= 500){
+        lastWas5xx = true;
         console.warn(`Delete: ${response.status} Server Error. Retrying...`);
         await exponentialBackoff(attempt, 4);
         attempt++;
@@ -1758,6 +1776,12 @@ async function graphDeleteItem(listSlug, itemId, etag){
       await exponentialBackoff(attempt, 4);
       attempt++;
     }
+  }
+  if(lastWas5xx){
+    const msg = "Server error — your changes will retry. If this persists, contact admin.";
+    console.error(`Delete: Server error exhausted retries (${maxRetries})`);
+    showToast(msg, "error");
+    throw { code: "DELETE_MAX_RETRIES_5xx", message: msg };
   }
   throw { code: "DELETE_MAX_RETRIES", message: "Max retries exceeded for item deletion" };
 }
