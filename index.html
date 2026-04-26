@@ -3376,6 +3376,12 @@ async function addVehicleDefect(){
   const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
   await syncCreateToSP("vehicleInspections", "write_enabled_vehicleInspections", defect, fields);
 
+  // Guard: prevent CA creation if defect sync failed (defect.id still has pseudo-ID)
+  if (!defect.id || String(defect.id).startsWith("defect_")) {
+    showToast("Defect sync to SharePoint failed; Corrective Action not created. Please refresh and retry.", "error");
+    return;
+  }
+
   // Create matching Corrective Action record with stable defect.id (now SP item id)
   const severityMap = {"High":"High", "Medium":"Medium", "Low":"Low"};
   const caRecord = {
