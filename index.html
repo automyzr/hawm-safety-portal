@@ -4385,7 +4385,7 @@ async function addToolbox(){
   }
   clearPortalFilePicker("toolbox_upload_files","toolbox_upload_preview");
   rebuildAll();
-  const fields = {Title: rec.topic || "Toolbox Talk", Company: rec.company, Date: rec.date, Topic: rec.topic, Presenter: rec.presenter, Attendees: (rec.attendees || []).join(";"), Notes: rec.notes, DocumentReviewed: rec.documentReviewed, DocumentIndex: rec.documentIndex, Duration_x0020_Minutes: rec.durationMinutes};
+  const fields = {Title: rec.topic || "Toolbox Talk", Company: rec.company, Date: rec.date, Topic: rec.topic, Presenter: rec.presenter, Attendees: (rec.attendees || []).join(";"), Notes: rec.notes, DocumentReviewed: rec.documentReviewed, DocumentIndex: rec.documentIndex, Duration_x0020_Minutes: rec.durationMinutes ? Number(rec.durationMinutes) : null};
   await syncCreateToSP("toolbox", "write_enabled_toolbox", rec, fields);
 }
 function editToolbox(index){
@@ -4445,7 +4445,7 @@ async function saveEditedToolbox(){
   }
   try {
     const toolbox = db.toolbox[index];
-    const fields = {Title: toolbox.topic || "Toolbox Talk", Company: toolbox.company, Date: toolbox.date, Topic: toolbox.topic, Presenter: toolbox.presenter, Attendees: toolbox.attendees.join(";"), Notes: toolbox.notes, DocumentReviewed: toolbox.documentReviewed, DocumentIndex: toolbox.documentIndex, Duration_x0020_Minutes: toolbox.durationMinutes};
+    const fields = {Title: toolbox.topic || "Toolbox Talk", Company: toolbox.company, Date: toolbox.date, Topic: toolbox.topic, Presenter: toolbox.presenter, Attendees: toolbox.attendees.join(";"), Notes: toolbox.notes, DocumentReviewed: toolbox.documentReviewed, DocumentIndex: toolbox.documentIndex, Duration_x0020_Minutes: toolbox.durationMinutes ? Number(toolbox.durationMinutes) : null};
     if(!toolbox.id){
       const result = await graphCreateItem("toolbox", fields);
       toolbox.id = result.id;
