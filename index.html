@@ -2820,6 +2820,122 @@ async function cascadeDeleteCA(sourceEntityId){
   return deleted;
 }
 
+/**
+ * BT-PROD.D.01 — Round-trip test harness.
+ * Console-driven: window.__BT_PROD_D__.runFullSuite('Heave Away') etc.
+ */
+
+function snapshotDB(){
+  return JSON.parse(JSON.stringify(db));
+}
+
+async function seedTestData(company){
+  // Seed 1 entity per array entity type + 2 keyed map entries.
+  // Skips entities whose write-flag is false.
+  const ts = Date.now();
+  const seeded = [];
+
+  // Array entities — minimal valid shape per entity
+  if(FEATURE_FLAGS.write_enabled_people){
+    const p = { name:`TEST_PERSON_${ts}`, role:'Test', company };
+    if(typeof addPerson === 'function'){ addPerson(p); seeded.push({entity:'people', stub:p}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_vehicles){
+    const v = { name:`TEST_VEHICLE_${ts}`, type:'Truck', company };
+    if(typeof addVehicle === 'function'){ addVehicle(v); seeded.push({entity:'vehicles', stub:v}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_equipment){
+    const e = { name:`TEST_EQUIPMENT_${ts}`, type:'Tool', company };
+    if(typeof addEquipment === 'function'){ addEquipment(e); seeded.push({entity:'equipment', stub:e}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_incidents){
+    const i = { title:`TEST_INCIDENT_${ts}`, date: new Date().toISOString().split('T')[0], company };
+    if(typeof addIncident === 'function'){ addIncident(i); seeded.push({entity:'incidents', stub:i}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_hazards){
+    const h = { title:`TEST_HAZARD_${ts}`, location:'Test Location', company };
+    if(typeof addHazard === 'function'){ addHazard(h); seeded.push({entity:'hazards', stub:h}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_training){
+    const t = { employee:`TEST_PERSON_${ts}`, course:'Test Course', status:'Valid', company };
+    if(typeof addTrainingRecord === 'function'){ addTrainingRecord(t); seeded.push({entity:'training', stub:t}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_toolbox){
+    const tb = { date: new Date().toISOString().split('T')[0], topic:'Test Topic', company };
+    if(typeof addToolboxTalk === 'function'){ addToolboxTalk(tb); seeded.push({entity:'toolbox', stub:tb}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_inspections){
+    const insp = { type:'Vehicle', date: new Date().toISOString().split('T')[0], company };
+    if(typeof addInspection === 'function'){ addInspection(insp); seeded.push({entity:'inspections', stub:insp}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_maintenance){
+    const m = { vehicle:`TEST_VEHICLE_${ts}`, date: new Date().toISOString().split('T')[0], company };
+    if(typeof addMaintenance === 'function'){ addMaintenance(m); seeded.push({entity:'maintenance', stub:m}); }
+  }
+  if(FEATURE_FLAGS.write_enabled_incidents){
+    const ic = { incident:`TEST_INCIDENT_${ts}`, action:'Test Action', company };
+    if(typeof addCorrectiveAction === 'function'){ addCorrectiveAction(ic); seeded.push({entity:'correctiveActions', stub:ic}); }
+  }
+
+  // Keyed map entries: corOverrides and incidentCounters
+  if(FEATURE_FLAGS.write_enabled_corOverrides){
+    const coKey = corOverrideKey(company, 'Test');
+    if(!db.corOverrides) db.corOverrides = {};
+    db.corOverrides[coKey] = { status: 'Active', reason: `Test override ${ts}` };
+    seeded.push({entity:'corOverrides', key:coKey, stub:db.corOverrides[coKey]});
+  }
+  if(FEATURE_FLAGS.write_enabled_incidentCounters){
+    const icKey = `${company}||${new Date().getFullYear()}`;
+    if(!db.incidentCounters) db.incidentCounters = {};
+    db.incidentCounters[icKey] = (db.incidentCounters[icKey] || 0) + 1;
+    seeded.push({entity:'incidentCounters', key:icKey, value:db.incidentCounters[icKey]});
+  }
+
+  // Persist to localStorage after seeding
+  if(typeof persistLocalSnapshot === 'function') persistLocalSnapshot();
+
+  return seeded;
+}
+
+function verifyRoundTrip(expected, actual){
+  const deltas = [];
+  function diff(path, e, a){
+    if(e === a) return;
+    if(e === null || a === null || typeof e !== 'object' || typeof a !== 'object'){
+      deltas.push({path, expected:e, actual:a}); return;
+    }
+    if(Array.isArray(e) !== Array.isArray(a)){
+      deltas.push({path, expected:e, actual:a, reason:'array-vs-object'}); return;
+    }
+    if(Array.isArray(e)){
+      if(e.length !== a.length){ deltas.push({path:path+'.length', expected:e.length, actual:a.length}); }
+      for(let i = 0; i < Math.max(e.length, a.length); i++){
+        diff(`${path}[${i}]`, e[i], a[i]);
+      }
+      return;
+    }
+    const keys = new Set([...Object.keys(e), ...Object.keys(a)]);
+    // Skip ephemeral fields
+    const ephemeral = new Set(['_lastModified','_etag','_spItemId']);
+    for(const k of keys){
+      if(ephemeral.has(k)) continue;
+      diff(path ? `${path}.${k}` : k, e[k], a[k]);
+    }
+  }
+  diff('db', expected, actual);
+  return { pass: deltas.length === 0, deltas };
+}
+
+async function runFullSuite(company){
+  const before = snapshotDB();
+  const seeded = await seedTestData(company);
+  const after = snapshotDB();
+  // (real round-trip tests reload via Track H; here we just expose the building blocks)
+  return { company, seeded, snapshot_before: before, snapshot_after: after };
+}
+
+window.__BT_PROD_D__ = { snapshotDB, seedTestData, verifyRoundTrip, runFullSuite };
+
 function getCOROverride(company, section){
   return (db.corOverrides || {})[corOverrideKey(company, section)] || null;
 }
