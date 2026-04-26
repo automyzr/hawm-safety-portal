@@ -3013,12 +3013,16 @@ async function addVehicleDefect(){
   };
   db.vehicleInspections.push(defect);
 
-  // Create matching Corrective Action record
+  // Sync defect to SP first so defect.id resolves to stable SP item id
+  const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
+  await syncCreateToSP("vehicleInspections", "write_enabled_vehicleInspections", defect, fields);
+
+  // Create matching Corrective Action record with stable defect.id (now SP item id)
   const severityMap = {"High":"High", "Medium":"Medium", "Low":"Low"};
   const caRecord = {
     company,
     sourceType: "VehicleDefect",
-    source: defectId,
+    source: defect.id,
     reference: unit || plate || "Unknown",
     priority: severityMap[severity] || "Medium",
     assigned: assigned,
@@ -3066,8 +3070,6 @@ async function addVehicleDefect(){
 
   clearPortalFilePicker("vehicle_upload_files","vehicle_upload_preview");
   rebuildAll();
-  const fields = {Title: defect.defect || defect.unit || "Defect", Company: defect.company, "Vehicle_x0020_ID": defect.unit, "Inspection_x0020_Date": defect.dateReported, Inspector: defect.reportedBy, "Pass_x002f_Fail": defect.severity, "Defects_x0020_Found": defect.defect, "Out_x0020_of_x0020_Service_x003f_": defect.outOfService === "Yes", Plate: defect.plate, Assigned: defect.assigned, RepairDue: defect.repairDue, DateRepaired: defect.dateRepaired, RepairNotes: defect.repairNotes};
-  await syncCreateToSP("vehicleInspections", "write_enabled_vehicleInspections", defect, fields);
 }
 function editVehicleDefect(index){
   const rows = filterByCompany(db.vehicleInspections);
@@ -3128,8 +3130,8 @@ async function saveEditedVehicleDefect(){
   };
 
   // If defect is now marked as repaired, update the matching CA
-  if(newDateRepaired && caId){
-    const caIndex = db.correctiveActions.findIndex(ca => ca.sourceType === "VehicleDefect" && ca.source === caId);
+  if(newDateRepaired){
+    const caIndex = db.correctiveActions.findIndex(ca => ca.sourceType === "VehicleDefect" && (ca.source === caId || ca.source === oldDefect.id));
     if(caIndex >= 0){
       db.correctiveActions[caIndex].status = "Closed";
       db.correctiveActions[caIndex].completionDate = newDateRepaired;
