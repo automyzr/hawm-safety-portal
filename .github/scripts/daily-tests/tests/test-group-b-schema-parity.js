@@ -157,14 +157,17 @@ async function testListExistence(env) {
     }
 
     const actualListNames = data.value.map(list => list.displayName).filter(Boolean);
+    const actualListNamesLower = actualListNames.map(name => name.toLowerCase());
     const actualListsMap = {};
+    const actualListsMapLower = {};
     data.value.forEach(list => {
       actualListsMap[list.displayName] = list.id;
+      actualListsMapLower[list.displayName.toLowerCase()] = list.id;
     });
 
-    // Check for missing lists
+    // Check for missing lists (case-insensitive)
     const missingLists = expectedListNames.filter(
-      name => !actualListNames.includes(name)
+      name => !actualListNamesLower.includes(name.toLowerCase())
     );
 
     const duration = Date.now() - startTime;
@@ -185,13 +188,13 @@ async function testListExistence(env) {
       });
     }
 
-    // Success: store list IDs for dependent tests
+    // Success: store list IDs for dependent tests (map is case-insensitive)
     return {
       testId: 'B.01',
       testName: 'B.01 — List existence',
       status: 'passed',
       duration,
-      listIds: actualListsMap,
+      listIds: actualListsMapLower,
       evidence: {
         expectedLists: expectedListNames,
         actualLists: actualListNames,
@@ -330,7 +333,7 @@ async function runGroupBTests(env) {
 
   for (let i = 0; i < listNames.length && i < 16; i++) {
     const listName = listNames[i];
-    const listId = b01Result.listIds[listName];
+    const listId = b01Result.listIds[listName.toLowerCase()];
 
     if (!listId) {
       // List ID not found; mark test as failed
