@@ -20,6 +20,11 @@ const HAWMTRACKER_SITE_ID = 'heaveawaynl.sharepoint.com,9c28e984-711f-4f10-820d-
  * @returns {string|null} - PROBE_LIST_ID or null if missing/invalid
  */
 function loadProbeListId(envProbePath) {
+  // Prefer process.env (set by GHA workflow from secret); fall back to .env.probe file (local dev)
+  if (process.env.PROBE_LIST_ID) {
+    return process.env.PROBE_LIST_ID;
+  }
+
   try {
     if (!fs.existsSync(envProbePath)) {
       return null;
