@@ -38,6 +38,7 @@ jobs:
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           TRELLO_API_KEY=${{ secrets.TRELLO_API_KEY }}
           TRELLO_TOKEN=${{ secrets.TRELLO_TOKEN }}
+          PROBE_LIST_ID=${{ secrets.PROBE_LIST_ID }}
           EOF
           # Load probe list ID if it exists (for seed-witnesses detection)
           [ -f .github/scripts/daily-tests/.env.probe ] && cat .github/scripts/daily-tests/.env.probe >> .env || true
