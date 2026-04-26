@@ -112,7 +112,7 @@
         { "name": "Duration Minutes", "type": "Edm.String" }
       ]
     },
-    "Vehicle": {
+    "vehicleInspections": {
       "fields": [
         { "name": "Company", "type": "Edm.String" },
         { "name": "Inspection_x0020_Date", "type": "Edm.DateTime" },
