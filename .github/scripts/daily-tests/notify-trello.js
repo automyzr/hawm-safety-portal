@@ -239,16 +239,38 @@ async function main() {
     }
 
     const failedTests = testResultsObj.failed || [];
+    const passedTests = testResultsObj.passed || [];
+    const skippedTests = testResultsObj.skipped || [];
+    const testsRan = (passedTests.length + failedTests.length + skippedTests.length) > 0;
+    const crashed = testResultsObj.exitCode !== 0 && testResultsObj.exitCode !== 1;
 
-    if (failedTests.length === 0) {
+    if (failedTests.length === 0 && testsRan && !crashed) {
       ok('All tests passed; no Trello card created');
       process.exit(0);
     }
 
     // Build card content
     const dateStr = new Date().toISOString().split('T')[0];
-    const cardTitle = `[DAILY-TEST FAIL] ${dateStr} — ${failedTests.length} test(s) failed`;
-    const cardDescription = buildCardDescription(testResultsObj);
+    let cardTitle, cardDescription;
+
+    if (crashed || !testsRan) {
+      cardTitle = `[DAILY-TEST CRASH] ${dateStr} — runner failed to execute tests`;
+      const exitCode = testResultsObj.exitCode !== undefined ? testResultsObj.exitCode : 'unknown';
+      cardDescription = `
+**Runner Error:**
+- Exit Code: ${exitCode}
+- Tests Ran: ${testsRan}
+- Passed: ${passedTests.length}
+- Failed: ${failedTests.length}
+- Skipped: ${skippedTests.length}
+
+Check GitHub Actions workflow logs for details.
+      `.trim();
+    } else {
+      cardTitle = `[DAILY-TEST FAIL] ${dateStr} — ${failedTests.length} test(s) failed`;
+      cardDescription = buildCardDescription(testResultsObj);
+    }
+
     const cardComment = buildCardComment();
 
     // Get list ID (try "Blocked" first, fall back to first list)

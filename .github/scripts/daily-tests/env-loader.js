@@ -41,8 +41,9 @@ function loadEnv() {
   });
 
   // Map SP_CLIENT_ID -> HAWM_AUTOMATION_CLIENT_ID for test harness
-  env.HAWM_AUTOMATION_CLIENT_ID = env.SP_CLIENT_ID;
-  env.HAWM_AUTOMATION_CLIENT_SECRET = env.SP_CLIENT_SECRET;
+  // Use fallback logic to preserve GHA-supplied vars (which use HAWM_AUTOMATION_* directly)
+  env.HAWM_AUTOMATION_CLIENT_ID = env.HAWM_AUTOMATION_CLIENT_ID || env.SP_CLIENT_ID;
+  env.HAWM_AUTOMATION_CLIENT_SECRET = env.HAWM_AUTOMATION_CLIENT_SECRET || env.SP_CLIENT_SECRET;
 
   // Validate required variables
   const required = [
