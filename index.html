@@ -5240,7 +5240,7 @@ async function saveEditedInspection(){
     } else {
       await graphUpdateItem("inspections", inspection.id, fields, inspection.etag);
     }
-    logAuditEntry({user: currentUser, list: "inspections", itemId: inspection.id, action: "UPDATE", delta: fields});
+    logAuditEntry({user: "current_user", list: "inspections", itemId: inspection.id, action: "UPDATE", delta: fields});
     showToast("✓ Saved to SharePoint", "success");
   } catch(err){
     db.inspections[index] = oldState;
@@ -5353,7 +5353,7 @@ async function saveEditedIncident(){
     } else {
       await graphUpdateItem("incidents", incident.id, fields, incident.etag);
     }
-    logAuditEntry({user: currentUser, list: "incidents", itemId: incident.id, action: "UPDATE", delta: fields});
+    logAuditEntry({user: "current_user", list: "incidents", itemId: incident.id, action: "UPDATE", delta: fields});
     showToast("✓ Saved to SharePoint", "success");
     clearIncidentEditor(); rebuildAll();
   } catch(e){
@@ -5424,7 +5424,7 @@ async function saveEditedHazard(){
     } else {
       await graphUpdateItem("hazard", hazard.id, fields, hazard.etag);
     }
-    logAuditEntry({user: currentUser, list: "hazard", itemId: hazard.id, action: "UPDATE", delta: fields});
+    logAuditEntry({user: "current_user", list: "hazard", itemId: hazard.id, action: "UPDATE", delta: fields});
     showToast("✓ Saved to SharePoint", "success");
   } catch(err){
     db.hazard[index] = oldState;
@@ -5486,7 +5486,7 @@ async function saveEditedCommittee(){
     } else {
       await graphUpdateItem("committee", committee.id, fields, committee.etag);
     }
-    logAuditEntry({user: currentUser, list: "committee", itemId: committee.id, action: "UPDATE", delta: fields});
+    logAuditEntry({user: "current_user", list: "committee", itemId: committee.id, action: "UPDATE", delta: fields});
     showToast("✓ Saved to SharePoint", "success");
   } catch(err){
     db.committee[index] = oldState;
@@ -5517,7 +5517,7 @@ async function addManualCA(){
     Company: ca.company || ''
   };
   await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, fields);
-  logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: ca.id, action: 'CREATE', delta: fields});
+  logAuditEntry({user: "current_user", list: 'correctiveActions', itemId: ca.id, action: 'CREATE', delta: fields});
   rebuildAll();
 }
 async function saveEditedCA(caId, updates){
@@ -5546,7 +5546,7 @@ async function saveEditedCA(caId, updates){
     Company: merged.company || ''
   };
   if(!FEATURE_FLAGS.write_enabled_correctiveActions){
-    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: caId, action: 'UPDATE', delta: fields, blocked: true});
+    logAuditEntry({user: "current_user", list: 'correctiveActions', itemId: caId, action: 'UPDATE', delta: fields, blocked: true});
     showToast('CA save blocked: write_enabled_correctiveActions disabled','warn');
     return;
   }
@@ -5560,11 +5560,11 @@ async function saveEditedCA(caId, updates){
       await graphUpdateItem('correctiveActions', ca.id, fields, ca.etag);
     }
     Object.assign(ca, merged);
-    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: ca.id, action: 'UPDATE', delta: fields});
+    logAuditEntry({user: "current_user", list: 'correctiveActions', itemId: ca.id, action: 'UPDATE', delta: fields});
     showToast('✓ CA saved','success');
     saveDB();
   } catch(err){
-    logAuditEntry({user: currentUser, list: 'correctiveActions', itemId: caId, action: 'ERROR', error: String(err && err.message || err)});
+    logAuditEntry({user: "current_user", list: 'correctiveActions', itemId: caId, action: 'ERROR', error: String(err && err.message || err)});
     showToast('CA save failed: '+(err && err.message || err),'error');
   }
 }
