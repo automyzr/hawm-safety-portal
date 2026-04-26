@@ -3686,9 +3686,9 @@ function editTruckProfile(index){
   byId("truck_edit_permitName").value = record.permitName || "";
   byId("truck_edit_permitExpiry").value = record.permitExpiry || "";
 
-  if(byId("truck_existing_insurance_uploads")) byId("truck_existing_insurance_uploads").innerHTML = renderPortalFileLinks(record.insuranceUploads || []);
-  if(byId("truck_existing_registration_uploads")) byId("truck_existing_registration_uploads").innerHTML = renderPortalFileLinks(record.registrationUploads || []);
-  if(byId("truck_existing_permit_uploads")) byId("truck_existing_permit_uploads").innerHTML = renderPortalFileLinks(record.permitUploads || []);
+  if(byId("truck_existing_insurance_uploads")) byId("truck_existing_insurance_uploads").innerHTML = renderPortalFileLinks(record.insuranceUploads || [], {allowDelete: true});
+  if(byId("truck_existing_registration_uploads")) byId("truck_existing_registration_uploads").innerHTML = renderPortalFileLinks(record.registrationUploads || [], {allowDelete: true});
+  if(byId("truck_existing_permit_uploads")) byId("truck_existing_permit_uploads").innerHTML = renderPortalFileLinks(record.permitUploads || [], {allowDelete: true});
 
   clearPortalFilePicker("truck_edit_insuranceFiles","truck_edit_insurance_preview");
   clearPortalFilePicker("truck_edit_registrationFiles","truck_edit_registration_preview");
@@ -4401,7 +4401,7 @@ function editToolbox(index){
   byId("toolbox_edit_doc_reviewed").value = rec.documentReviewed || "No";
   populateToolboxDocumentDropdowns();
   byId("toolbox_edit_document").value = rec.documentIndex || "";
-  byId("toolbox_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("toolbox_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearToolboxEditor(){
   ["toolbox_edit_index","toolbox_edit_date","toolbox_edit_presenter","toolbox_edit_topic","toolbox_edit_notes"].forEach(id => { if(byId(id)) byId(id).value = ""; });
@@ -5379,7 +5379,7 @@ function editHazard(index){
   byId("hazard_edit_proof_desc").value = rec.proofDescription || "";
   byId("hazard_edit_proof_by").value = rec.addedBy || "";
   byId("hazard_edit_proof_date").value = rec.dateAdded || "";
-  byId("hazard_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("hazard_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearHazardEditor(){
   ["hazard_edit_index","hazard_edit_date","hazard_edit_task","hazard_edit_location","hazard_edit_leader","hazard_edit_hazards","hazard_edit_controls","hazard_edit_proof_desc","hazard_edit_proof_by","hazard_edit_proof_date"].forEach(id => byId(id).value = "");
@@ -5444,7 +5444,7 @@ function editCommittee(index){
   byId("committee_edit_proof_desc").value = rec.proofDescription || "";
   byId("committee_edit_proof_by").value = rec.addedBy || "";
   byId("committee_edit_proof_date").value = rec.dateAdded || "";
-  byId("committee_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("committee_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearCommitteeEditor(){
   ["committee_edit_index","committee_edit_name","committee_edit_role","committee_edit_due","committee_edit_notes","committee_edit_proof_desc","committee_edit_proof_by","committee_edit_proof_date"].forEach(id => byId(id).value = "");
