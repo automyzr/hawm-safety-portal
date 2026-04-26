@@ -3302,9 +3302,9 @@ async function addTruckProfile(){
     registrationUploads,
     permitUploads
   };
-  db.truckProfiles.push(truck);
   const fields = {Title: truck.unit || "Truck", Company: truck.company, "Truck_x0020_ID": truck.unit, Year: truck.year, Make: truck.make, Model: truck.model, Plate: truck.plate, VIN: truck.vin, Crew: truck.crew, AssignedPerson: truck.person, HourlyRate: Number(truck.hourlyRate) || 0, IdleHours: Number(truck.idleHours) || 0, InsuranceExpiry: truck.insuranceExpiry, RegistrationExpiry: truck.registrationExpiry, PermitName: truck.permitName, PermitExpiry: truck.permitExpiry};
   await syncCreateToSP("truckProfiles", "write_enabled_truckProfiles", truck, fields);
+  db.truckProfiles.push(truck);
   await checkTruckExpiriesAndCreateCAs(truck, company);
   clearTruckEditor();
   rebuildAll();
