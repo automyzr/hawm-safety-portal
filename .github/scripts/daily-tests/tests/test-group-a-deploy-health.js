@@ -142,6 +142,23 @@ async function testEntraMetadata(env) {
     const url = `https://graph.microsoft.com/v1.0/applications?$filter=appId eq '${ENTRA_APP_ID}'`;
     const response = await get(url, env);
 
+    // Handle 403 gracefully: Application.Read.All not granted to HAWM-Automation app
+    if (response.statusCode === 403) {
+      const duration = Date.now() - startTime;
+      return createResult({
+        testId: 'A.03',
+        testName: 'A.03 — Entra app metadata',
+        status: 'skipped',
+        duration,
+        evidence: {
+          reason: 'Application.Read.All not granted to HAWM-Automation app — daily test cannot programmatically verify Entra app metadata.',
+          workaround: 'Manual: verify at https://entra.microsoft.com → Applications → Safety Portal (clientId 8525c5f0-92ed-42cc-a352-381515a02145) → confirm displayName + requiredResourceAccess',
+          httpStatus: 403,
+          graphError: response.body ? JSON.parse(response.body) : null
+        }
+      });
+    }
+
     if (response.statusCode !== 200) {
       throw new Error(
         `Graph API returned HTTP ${response.statusCode}: ${response.body}`

@@ -8,6 +8,10 @@ const path = require('path');
  * Tests: B.01 (List existence), B.02-B.17 (Schema per list)
  */
 
+// HAWMTracker site (where the 16 production lists live).
+// env.SP_SITE_ID points to Automation-Do-Not-Edit; we explicitly target HAWMTracker here.
+const HAWMTRACKER_SITE_ID = process.env.SP_SITE_ID_HAWMTRACKER || "heaveawaynl.sharepoint.com,9c28e984-711f-4f10-820d-62ae3beccb44,8f01ebb8-4334-4623-9f66-94443f5e2b05";
+
 /**
  * Load the schema fixture
  * @returns {object} - Fixture with expected lists and fields
@@ -127,11 +131,11 @@ function compareSchemas(expectedFields, actualColumns) {
  */
 async function testListExistence(env) {
   const startTime = Date.now();
-  const siteId = env.SP_SITE_ID;
+  const siteId = HAWMTRACKER_SITE_ID;
 
   try {
     if (!siteId) {
-      throw new Error('SP_SITE_ID not configured in environment');
+      throw new Error('HAWMTRACKER_SITE_ID not configured');
     }
 
     const fixture = loadSchemaFixture();
@@ -221,7 +225,7 @@ async function testListSchema(listName, listId, expectedFields, testIndex, env) 
   const testName = `B.${String(testIndex).padStart(2, '0')} — ${listName} schema`;
 
   try {
-    const siteId = env.SP_SITE_ID;
+    const siteId = HAWMTRACKER_SITE_ID;
 
     // Call Graph API to get columns with expanded sub-properties
     const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/columns?$select=id,displayName,name,fieldValueType,choice,text,number,dateTime,boolean`;
