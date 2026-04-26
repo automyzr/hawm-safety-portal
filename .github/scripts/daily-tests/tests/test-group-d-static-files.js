@@ -8,7 +8,8 @@ const { createResult } = require('../lib/result-logger');
  * Tests: D.01 (index.html size), D.02 (index.html parseable), D.03 (staticwebapp.config.json), D.04 (logo asset)
  */
 
-const PORTAL_ROOT = path.join(__dirname, '../../../hawm-safety-portal');
+// Support env-var override for mirrored layouts (e.g., GHA); fallback to canonical relative path
+const PORTAL_ROOT = process.env.PORTAL_ROOT || path.join(__dirname, '../../../hawm-safety-portal');
 
 /**
  * D.01 — index.html present + gzip size < 600 KB

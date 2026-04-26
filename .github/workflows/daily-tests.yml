@@ -43,6 +43,9 @@ jobs:
           [ -f .github/scripts/daily-tests/.env.probe ] && cat .github/scripts/daily-tests/.env.probe >> .env || true
 
       - name: Run daily tests
+        env:
+          PORTAL_ROOT: ${{ github.workspace }}
+          DAILY_TESTS_DOTENV_PATH: ${{ github.workspace }}/.env
         run: node .github/scripts/daily-tests/test-runner.js
         continue-on-error: true
 

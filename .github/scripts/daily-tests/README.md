@@ -258,6 +258,22 @@ The test harness requires these variables in `.env`:
 
 These are loaded and validated by `env-loader.js`.
 
+### Path Resolution Overrides (for mirrored layouts)
+
+The test suite supports two optional environment variables for use in mirrored test locations (e.g., GitHub Actions):
+
+- `DAILY_TESTS_DOTENV_PATH` — Absolute path to `.env` file. If not set, defaults to canonical relative path `../../.env` from `env-loader.js`.
+- `PORTAL_ROOT` — Absolute path to hawm-safety-portal root directory. If not set, defaults to canonical relative path `../../../hawm-safety-portal` from test files.
+
+These overrides are used by the GitHub Actions workflow (`.github/workflows/daily-tests.yml`) which sets:
+```yaml
+env:
+  PORTAL_ROOT: ${{ github.workspace }}
+  DAILY_TESTS_DOTENV_PATH: ${{ github.workspace }}/.env
+```
+
+**Local development:** Omit these variables to use canonical relative paths. The fallback behavior ensures tests work in the original `scripts/daily-tests/` layout.
+
 ## Token Caching
 
 The `graph-token.js` module caches access tokens in memory with a 5-minute safety buffer. The cache is automatically refreshed when expired.

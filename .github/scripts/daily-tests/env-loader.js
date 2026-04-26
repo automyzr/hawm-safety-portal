@@ -11,7 +11,9 @@ const path = require('path');
  */
 
 function loadEnv() {
-  const envPath = path.join(__dirname, '../../.env');
+  // Allow override via env var for mirrored test locations (e.g., GHA workflow)
+  // Fallback to canonical relative path for local development
+  const envPath = process.env.DAILY_TESTS_DOTENV_PATH || path.join(__dirname, '../../.env');
 
   if (!fs.existsSync(envPath)) {
     throw new Error(`Environment file not found: ${envPath}`);

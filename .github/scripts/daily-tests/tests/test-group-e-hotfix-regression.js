@@ -276,10 +276,9 @@ async function runGroupETests(env) {
   const results = [];
 
   try {
-    // Construct path to index.html relative to this script location
-    // scripts/daily-tests/tests/test-group-e-hotfix-regression.js
-    // -> ../../../hawm-safety-portal/index.html
-    const indexHtmlPath = path.join(__dirname, '../../../hawm-safety-portal/index.html');
+    // Support env-var override for mirrored layouts (e.g., GHA); fallback to canonical relative path
+    const portalRoot = process.env.PORTAL_ROOT || path.join(__dirname, '../../../hawm-safety-portal');
+    const indexHtmlPath = path.join(portalRoot, 'index.html');
 
     // Read the file once
     let htmlContent;
