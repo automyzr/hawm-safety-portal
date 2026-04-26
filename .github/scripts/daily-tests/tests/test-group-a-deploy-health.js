@@ -130,85 +130,119 @@ async function testGitHubActions(env) {
 
 /**
  * A.03 — Entra app metadata
- * GET /applications?$filter=appId eq '{ENTRA_APP_ID}'
- * Safety Portal app: 8525c5f0-92ed-42cc-a352-381515a02145
+ * Verify Safety Portal Entra app exists via token-endpoint negative probe.
+ * Sends a deliberately-invalid client_secret; inspects error code.
+ * AADSTS7000215 = app exists (wrong secret) → PASS
+ * AADSTS700016 / AADSTS900023 = app doesn't exist → FAIL
+ * Other code → fail-with-note (unexpected, surface for triage)
  */
-async function testEntraMetadata(env) {
-  const startTime = Date.now();
-  const ENTRA_APP_ID = '8525c5f0-92ed-42cc-a352-381515a02145';
-
-  try {
-    // Use http-client.get() which injects Graph token automatically
-    const url = `https://graph.microsoft.com/v1.0/applications?$filter=appId eq '${ENTRA_APP_ID}'`;
-    const response = await get(url, env);
-
-    // Handle 403 gracefully: Application.Read.All not granted to HAWM-Automation app
-    if (response.statusCode === 403) {
-      const duration = Date.now() - startTime;
-      return createResult({
-        testId: 'A.03',
-        testName: 'A.03 — Entra app metadata',
-        status: 'skipped',
-        duration,
-        evidence: {
-          reason: 'Application.Read.All not granted to HAWM-Automation app — daily test cannot programmatically verify Entra app metadata.',
-          workaround: 'Manual: verify at https://entra.microsoft.com → Applications → Safety Portal (clientId 8525c5f0-92ed-42cc-a352-381515a02145) → confirm displayName + requiredResourceAccess',
-          httpStatus: 403,
-          graphError: response.body ? JSON.parse(response.body) : null
-        }
-      });
-    }
-
-    if (response.statusCode !== 200) {
-      throw new Error(
-        `Graph API returned HTTP ${response.statusCode}: ${response.body}`
-      );
-    }
-
-    const data = response.parsed || {};
-    if (!data.value || !Array.isArray(data.value)) {
-      throw new Error('Invalid response structure from Graph API');
-    }
-
-    if (data.value.length !== 1) {
-      throw new Error(
-        `Expected exactly 1 application, found ${data.value.length}`
-      );
-    }
-
-    const app = data.value[0];
-    const duration = Date.now() - startTime;
-
-    // Check displayName
-    if (!app.displayName) {
-      throw new Error('Application displayName is missing');
-    }
-
-    // Check requiredResourceAccess
-    const hasRequiredScopes = app.requiredResourceAccess && Array.isArray(app.requiredResourceAccess);
-
+async function testEntraAppMetadata(env) {
+  const SAFETY_PORTAL_CLIENT_ID = '8525c5f0-92ed-42cc-a352-381515a02145';
+  const tenantId = env.M365_TENANT_ID;
+  if (!tenantId) {
     return createResult({
       testId: 'A.03',
       testName: 'A.03 — Entra app metadata',
-      status: 'passed',
-      duration,
-      evidence: {
-        appId: app.appId,
-        displayName: app.displayName,
-        id: app.id,
-        publisherDomain: app.publisherDomain,
-        hasRequiredResourceAccess: hasRequiredScopes,
-        requiredResourceAccessCount: hasRequiredScopes ? app.requiredResourceAccess.length : 0
-      }
+      status: 'skipped',
+      evidence: { reason: 'M365_TENANT_ID not set' }
     });
-  } catch (error) {
-    const duration = Date.now() - startTime;
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const body = new URLSearchParams({
+    client_id: SAFETY_PORTAL_CLIENT_ID,
+    client_secret: 'DELIBERATELY_INVALID_PROBE_SECRET',
+    scope: 'https://graph.microsoft.com/.default',
+    grant_type: 'client_credentials'
+  }).toString();
+
+  // Use inline HTTPS POST helper — DO NOT use lib/http-client.js (that injects Graph token; we need raw HTTPS here)
+  const url = require('url');
+  const parsedUrl = url.parse(tokenUrl);
+
+  const responseBody = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 10000
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => resolve({ statusCode: res.statusCode, body: data }));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout after 10s')); });
+    req.write(body);
+    req.end();
+  });
+
+  let parsed;
+  try { parsed = JSON.parse(responseBody.body); } catch (e) {
     return createResult({
       testId: 'A.03',
       testName: 'A.03 — Entra app metadata',
       status: 'failed',
-      duration,
-      error
+      evidence: { reason: 'Token endpoint returned non-JSON', statusCode: responseBody.statusCode, body: responseBody.body.slice(0, 500) },
+      error: new Error('Unexpected token endpoint response')
+    });
+  }
+
+  const errorCode = parsed.error;
+  const errorDescription = parsed.error_description || '';
+  // The error_description starts with "AADSTSXXXXXX:"
+  const aadstsMatch = errorDescription.match(/AADSTS(\d+)/);
+  const aadstsCode = aadstsMatch ? aadstsMatch[1] : null;
+
+  // AADSTS7000215 = invalid client secret → app exists, app is configured for client-credentials
+  // AADSTS700016 / AADSTS900023 = app not found in tenant
+  if (aadstsCode === '7000215') {
+    return createResult({
+      testId: 'A.03',
+      testName: 'A.03 — Entra app metadata',
+      status: 'passed',
+      evidence: {
+        method: 'token-endpoint negative probe',
+        aadstsCode,
+        appId: SAFETY_PORTAL_CLIENT_ID,
+        tenantId,
+        interpretation: 'App exists in tenant, configured for client_credentials (returned wrong-secret error as expected)'
+      }
+    });
+  } else if (aadstsCode === '700016' || aadstsCode === '900023') {
+    return createResult({
+      testId: 'A.03',
+      testName: 'A.03 — Entra app metadata',
+      status: 'failed',
+      evidence: {
+        method: 'token-endpoint negative probe',
+        aadstsCode,
+        appId: SAFETY_PORTAL_CLIENT_ID,
+        tenantId,
+        interpretation: 'App NOT found in tenant — Safety Portal Entra app was deleted or moved',
+        errorDescription: errorDescription.slice(0, 400)
+      },
+      error: new Error(`Entra app ${SAFETY_PORTAL_CLIENT_ID} not found in tenant ${tenantId}`)
+    });
+  } else {
+    // Unexpected code — could be config drift; fail with note
+    return createResult({
+      testId: 'A.03',
+      testName: 'A.03 — Entra app metadata',
+      status: 'failed',
+      evidence: {
+        method: 'token-endpoint negative probe',
+        aadstsCode,
+        unexpectedErrorCode: errorCode,
+        errorDescription: errorDescription.slice(0, 400),
+        statusCode: responseBody.statusCode,
+        interpretation: 'Unexpected error code — review manually'
+      },
+      error: new Error(`Unexpected error: ${errorCode} (AADSTS${aadstsCode})`)
     });
   }
 }
@@ -330,7 +364,7 @@ async function runGroupATests(env) {
   // Run all 4 tests in sequence
   results.push(await testSwaHealth(env));
   results.push(await testGitHubActions(env));
-  results.push(await testEntraMetadata(env));
+  results.push(await testEntraAppMetadata(env));
   results.push(await testMsalCdn(env));
 
   return results;
