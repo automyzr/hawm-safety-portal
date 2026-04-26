@@ -2008,6 +2008,8 @@ async function loadFeatureFlags(){
 }
 function mapPeople(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Name", "Title"])),
     department: normalizeText(fieldValue(item.fields, ["Department"])),
@@ -2017,6 +2019,8 @@ function mapPeople(items){
 }
 function mapTraining(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     employee: normalizeText(fieldValue(item.fields, ["Employee", "Title"])),
     course: normalizeText(fieldValue(item.fields, ["Course"])),
@@ -2033,6 +2037,8 @@ function mapTraining(items){
 }
 function mapDocuments(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Title"])),
     number: normalizeText(fieldValue(item.fields, ["Number", "Doc_x0020__x0023_"])),
@@ -2055,6 +2061,8 @@ function mapDocuments(items){
 }
 function mapManual(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     section: normalizeText(fieldValue(item.fields, ["Title"])),
     owner: normalizeText(fieldValue(item.fields, ["Owner"])),
@@ -2068,6 +2076,8 @@ function mapCor(items){
     const compliant = toBoolean(fieldValue(item.fields, ["Compliant"], false));
     const section = normalizeText(fieldValue(item.fields, ["Section", "Title"]));
     return {
+      id: item.id,
+      etag: item["@odata.etag"],
       company: normalizeText(fieldValue(item.fields, ["Company"])),
       section,
       requiredTypes: (corRequiredTypes[section] || []).join(", "),
@@ -2096,6 +2106,8 @@ function mapCorOverrides(items){
 }
 function mapToolbox(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Date"])),
     presenter: normalizeText(fieldValue(item.fields, ["Presenter"])),
@@ -2110,6 +2122,8 @@ function mapToolbox(items){
 }
 function mapVehicle(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     dateReported: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
     reportedBy: normalizeText(fieldValue(item.fields, ["Inspector"])),
@@ -2127,6 +2141,8 @@ function mapVehicle(items){
 }
 function mapInspections(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
     crew: normalizeText(fieldValue(item.fields, ["Crew"])),
@@ -2143,6 +2159,8 @@ function mapInspections(items){
 }
 function mapIncidents(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     incidentNumber: normalizeText(fieldValue(item.fields, ["Incident_x0020_ID", "Incident ID", "Title"])),
     date: normalizeText(fieldValue(item.fields, ["Date"])),
@@ -2170,6 +2188,8 @@ function mapIncidents(items){
 }
 function mapHazard(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Assessment_x0020_Date", "Assessment Date"])),
     task: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process", "Title"])),
@@ -2186,6 +2206,8 @@ function mapHazard(items){
 }
 function mapCommittee(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Title"])),
     role: normalizeText(fieldValue(item.fields, ["Role"])),
@@ -2200,6 +2222,8 @@ function mapCommittee(items){
 }
 function mapCorrectiveActions(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     sourceType: normalizeText(fieldValue(item.fields, ["Source_x0020_Type", "Source Type"])) || "Unknown",
     source: normalizeText(fieldValue(item.fields, ["Triggered_x0020_By", "Triggered By"])),
@@ -2244,6 +2268,8 @@ function mapIncidentCounters(items){
 }
 function mapTruckProfiles(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     unit: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     plate: normalizeText(fieldValue(item.fields, ["Plate"])),
@@ -2270,6 +2296,8 @@ function mapTruckProfiles(items){
 }
 function mapMaintenanceLocations(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Location_x0020_Name", "Location Name", "Title"])),
     address: normalizeText(fieldValue(item.fields, ["Address"])),
@@ -2283,6 +2311,8 @@ function mapMaintenanceLocations(items){
 }
 function mapMaintenanceRecords(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     truck: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     truckId: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
@@ -2317,6 +2347,8 @@ function mapMaintenanceRecords(items){
 }
 function mapLifts(items){
   return items.map(item => ({
+    id: item.id,
+    etag: item["@odata.etag"],
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Date"])),
     operator: normalizeText(fieldValue(item.fields, ["Operator"])),
