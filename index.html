@@ -2773,6 +2773,53 @@ function populateCOROverrideDropdown(){
 function corOverrideKey(company, section){
   return `${company}||${section}`;
 }
+
+/**
+ * Resolve canonical entity ID.
+ * @param {Object} entity - Any entity object (truck, defect, maint, CA, etc.)
+ * @returns {string|null} Canonical String(entity.id) or null if entity/id missing.
+ */
+function resolveEntityId(entity){
+  if(!entity || entity.id == null) return null;
+  return String(entity.id);
+}
+
+/**
+ * Find all CAs (correctiveActions) matching a source entity ID.
+ * @param {string} sourceEntityId - SP or pseudo ID of the source entity.
+ * @returns {Array} Array of CA objects where ca.source === sourceEntityId.
+ */
+function findCAsBySource(sourceEntityId){
+  if(!sourceEntityId) return [];
+  const target = String(sourceEntityId);
+  return (db.correctiveActions || []).filter(ca => String(ca.source) === target);
+}
+
+/**
+ * Cascade delete CAs associated with a source entity.
+ * For each CA: delete from SP (if write_enabled_correctiveActions), remove from db, audit.
+ * @param {string} sourceEntityId - SP or pseudo ID of the source entity.
+ * @returns {Promise<number>} Count of deleted CAs.
+ */
+async function cascadeDeleteCA(sourceEntityId){
+  const cas = findCAsBySource(sourceEntityId);
+  if(!cas.length) return 0;
+  let deleted = 0;
+  for(const ca of cas){
+    const before = JSON.parse(JSON.stringify(ca));
+    if(FEATURE_FLAGS.write_enabled_correctiveActions){
+      try { await graphDeleteItem('correctiveActions', ca.id); }
+      catch(e){ console.warn('cascadeDeleteCA SP delete failed', ca.id, e); }
+    }
+    const idx = db.correctiveActions.indexOf(ca);
+    if(idx !== -1) db.correctiveActions.splice(idx, 1);
+    logAuditEntry({action:'Delete', entityType:'correctiveActions', entityId:ca.id, companyContext:ca.company||'', fieldsBefore:JSON.stringify(before), fieldsAfter:'{}'});
+    deleted++;
+  }
+  if(typeof saveDB === 'function') saveDB();
+  return deleted;
+}
+
 function getCOROverride(company, section){
   return (db.corOverrides || {})[corOverrideKey(company, section)] || null;
 }
