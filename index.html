@@ -3786,11 +3786,17 @@ async function addMaintRecord(){
   if(!db.maintenanceRecords) db.maintenanceRecords=[];
   db.maintenanceRecords.push(rec);
 
+  if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
+
+  // Sync maintenance record to SP BEFORE generating auto-CA (so ca.source captures stable SP item id)
+  const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
+  await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
+
   if(issueCategory.includes("Defect")||issueCategory.includes("Unscheduled")){
     if(!db.correctiveActions) db.correctiveActions=[];
-    const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:"Maintenance",company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
+    const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:rec.id,company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
     db.correctiveActions.push(ca);
-    // Persist auto-CA to SP
+    // Persist auto-CA to SP (rec.id now contains stable SP item id from syncCreateToSP above)
     const caFields = {
       Title: ca.action || ca.reference || "Maintenance CA",
       Status: ca.status || 'Open',
@@ -3805,11 +3811,8 @@ async function addMaintRecord(){
     await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, caFields);
   }
 
-  if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
   clearMaintRecordEditor();
   rebuildAll();
-  const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
-  await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
 }
 
 async function editMaintRecord(index){
