@@ -83,6 +83,8 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
 .file-preview{margin-top:6px;padding:8px;border:1px dashed var(--line);border-radius:10px;background:#fff;font-size:12px;color:var(--muted)}
 .file-preview div{margin:3px 0}
 .attachment-list a{display:block;margin:4px 0;color:var(--brand);text-decoration:none}
+.btn-link-danger{background:none;border:none;color:#dc2626;cursor:pointer;padding:0 4px;font-size:14px}
+.btn-link-danger:hover{color:#991b1b}
 .sync-banner{display:flex;align-items:center;justify-content:center;font-weight:700}
 .sync-banner.sync-ok{background:#d1fae5;color:#065f46;border-bottom:1px solid #6ee7b7}
 .sync-banner.sync-pending{background:#fef3c7;color:#7c2d12;border-bottom:1px solid #f59e0b}
@@ -1968,6 +1970,29 @@ async function downloadFileFromLibrary(fileId){
     throw error;
   }
 }
+async function deleteFileFromLibrary(fileId){
+  try {
+    if(!fileId || fileId.startsWith("local-") || fileId.startsWith("pending-")){
+      return { skipped: true };
+    }
+    const siteId = await getGraphSiteId();
+    const token = await getGraphToken();
+    const url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/items/${fileId}`;
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if(response.status === 204) return { deleted: true };
+    if(response.status === 404) { showToast("File already removed.", "info"); return { deleted: false, missing: true }; }
+    if(response.status === 403) { showToast("No permission to delete this file.", "error"); throw { code: "DELETE_FORBIDDEN" }; }
+    const errorText = await response.text();
+    throw new Error(`Delete failed ${response.status}: ${errorText}`);
+  } catch(error){
+    console.error("File delete failed:", error);
+    if(!error.code) showToast(`Delete failed: ${error.message}`, "error");
+    throw error;
+  }
+}
 async function loadFeatureFlags(){
   if(!hasGraphRuntimeConfig()) return FEATURE_FLAGS;
   try {
@@ -2530,6 +2555,35 @@ async function openPortalStoredFile(id, name){
     console.error("File download error:", error);
   }
 }
+async function confirmDeletePortalFile(fileId, fileName){
+  if(!confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
+  try {
+    const result = await deleteFileFromLibrary(fileId);
+    if(result.skipped){ showToast("File not yet synced; nothing to delete.", "info"); return; }
+    let removed = false;
+    const allCollections = [
+      db.vehicles, db.trucks, db.toolboxTalks, db.inspections,
+      db.incidents, db.hazards, db.committeeMinutes, db.training, db.documents
+    ].filter(Boolean);
+    for(const collection of allCollections){
+      for(const entity of collection){
+        for(const fieldName of ['uploads','proofs','files','certificates','insurance','registration','permit','insuranceFiles','registrationFiles','permitFiles']){
+          if(Array.isArray(entity[fieldName])){
+            const before = entity[fieldName].length;
+            entity[fieldName] = entity[fieldName].filter(f => f && f.id !== fileId);
+            if(entity[fieldName].length < before){
+              removed = true;
+            }
+          }
+        }
+      }
+    }
+    showToast(removed ? "File deleted." : "File deleted (no entity reference found).", "success");
+    if(typeof window.renderActive === 'function') window.renderActive();
+  } catch(error){
+    console.error("Delete flow failed:", error);
+  }
+}
 async function runMigration(){
   try {
     if(!hasGraphRuntimeConfig()){
@@ -2679,9 +2733,14 @@ function clearTrainingCertPicker(inputId, previewId){
   if(byId(inputId)) byId(inputId).value = "";
   if(byId(previewId)) byId(previewId).innerHTML = "No certificates selected.";
 }
-function renderPortalFileLinks(list){
+function renderPortalFileLinks(list, options){
+  const opts = options || {};
   if(!list || !list.length) return "";
-  return list.map(f => `<a href="#" onclick="openPortalStoredFile('${esc(f.id)}','${esc(f.name)}'); return false;">${esc(f.name)}</a>`).join("");
+  return list.map(f => {
+    const dl = `<a href="#" onclick="openPortalStoredFile('${esc(f.id)}','${esc(f.name)}'); return false;">${esc(f.name)}</a>`;
+    const del = opts.allowDelete ? ` <button type="button" class="btn-link-danger" title="Delete file" onclick="confirmDeletePortalFile('${esc(f.id)}','${esc(f.name)}'); return false;">✕</button>` : '';
+    return dl + del;
+  }).join(" ");
 }
 function showSelectedPortalFiles(inputId, previewId){
   const files = Array.from((byId(inputId)?.files) || []);
@@ -3352,7 +3411,7 @@ function editVehicleDefect(index){
   byId("vehicle_edit_due").value = rec.repairDue || "";
   byId("vehicle_edit_repaired").value = rec.dateRepaired || "";
   byId("vehicle_edit_repair_notes").value = rec.repairNotes || "";
-  byId("vehicle_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("vehicle_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearVehicleEditor(){
   ["vehicle_edit_index","vehicle_edit_date_reported","vehicle_edit_unit","vehicle_edit_plate","vehicle_edit_assigned","vehicle_edit_defect","vehicle_edit_due","vehicle_edit_repaired","vehicle_edit_repair_notes"].forEach(id => { if(byId(id)) byId(id).value = ""; });
@@ -5105,7 +5164,7 @@ function editInspection(index){
   byId("insp_edit_proof_desc").value = rec.proofDescription || "";
   byId("insp_edit_proof_by").value = rec.addedBy || "";
   byId("insp_edit_proof_date").value = rec.dateAdded || "";
-  byId("insp_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("insp_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearInspectionEditor(){
   ["insp_edit_index","insp_edit_date","insp_edit_crew","insp_edit_location","insp_edit_inspector","insp_edit_notes","insp_edit_proof_desc","insp_edit_proof_by","insp_edit_proof_date"].forEach(id => byId(id).value = "");
@@ -5180,7 +5239,7 @@ function editIncident(index){
   populateWitnessDropdowns(rec.witnesses || []);
   byId("incident_edit_proof_by").value = rec.addedBy || "";
   byId("incident_edit_proof_date").value = rec.dateAdded || "";
-  byId("incident_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || []);
+  byId("incident_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
 }
 function clearIncidentEditor(){
   ["incident_edit_index","incident_edit_date","incident_edit_number","incident_edit_employee","incident_edit_location","incident_edit_unit","incident_edit_description","incident_edit_proof_desc","incident_edit_immediate_notes","incident_edit_basic_notes","incident_edit_tags","incident_edit_proof_by","incident_edit_proof_date"].forEach(id => byId(id).value = "");
