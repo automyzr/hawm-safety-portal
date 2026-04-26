@@ -4778,12 +4778,12 @@ async function saveEditedPerson(){
   try {
     const person = db.people[index];
     if(!person.id){
-      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, Roles: person.roles};
+      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
       const result = await graphCreateItem("people", fields);
       person.id = result.id;
       person.etag = result.etag;
     } else {
-      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, Roles: person.roles};
+      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
       await graphUpdateItem("people", person.id, fields, person.etag);
       logAuditEntry({user: "current_user", list: "people", itemId: person.id, action: "UPDATE", delta: fields});
     }
@@ -4894,7 +4894,7 @@ async function addPerson(){
   const entity = {company, name:byId("person_name").value.trim(), department:byId("person_department").value.trim(), status:byId("person_status").value, roles};
   db.people.push(entity);
   saveDB(); renderAll();
-  const fields = {Title: entity.name, Company: entity.company, Department: entity.department, Status: entity.status, Roles: entity.roles};
+  const fields = {Title: entity.name, Company: entity.company, Department: entity.department, Status: entity.status, "Roles@odata.type": "Collection(Edm.String)", Roles: entity.roles};
   await syncCreateToSP("people", "write_enabled_people", entity, fields);
 }
 
