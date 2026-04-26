@@ -1,0 +1,64 @@
+name: Daily Test Suite
+
+on:
+  schedule:
+    # 08:00 UTC daily (midnight Eastern)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+# Required GitHub Secrets (must be configured before first run):
+# - HAWM_AUTOMATION_CLIENT_ID (Service account client ID for M365)
+# - HAWM_AUTOMATION_CLIENT_SECRET (Service account client secret)
+# - M365_TENANT_ID (Microsoft 365 tenant ID, e.g., heave-away.ca)
+# - SP_SITE_ID (SharePoint site ID for the HAWM tracker)
+# - SP_SITE_ID_HAWMTRACKER (Alternative/secondary SharePoint site ID if needed)
+# - TRELLO_API_KEY (Trello API key for card creation)
+# - TRELLO_TOKEN (Trello token for card creation)
+# - GITHUB_TOKEN (auto-injected by GitHub Actions)
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Load environment variables
+        run: |
+          cat > .env << 'EOF'
+          HAWM_AUTOMATION_CLIENT_ID=${{ secrets.HAWM_AUTOMATION_CLIENT_ID }}
+          HAWM_AUTOMATION_CLIENT_SECRET=${{ secrets.HAWM_AUTOMATION_CLIENT_SECRET }}
+          M365_TENANT_ID=${{ secrets.M365_TENANT_ID }}
+          SP_SITE_ID=${{ secrets.SP_SITE_ID }}
+          SP_SITE_ID_HAWMTRACKER=${{ secrets.SP_SITE_ID_HAWMTRACKER }}
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          TRELLO_API_KEY=${{ secrets.TRELLO_API_KEY }}
+          TRELLO_TOKEN=${{ secrets.TRELLO_TOKEN }}
+          EOF
+          # Load probe list ID if it exists (for seed-witnesses detection)
+          [ -f .github/scripts/daily-tests/.env.probe ] && cat .github/scripts/daily-tests/.env.probe >> .env || true
+
+      - name: Run daily tests
+        run: node .github/scripts/daily-tests/test-runner.js
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: .github/scripts/daily-tests/logs/test-results-*.json
+
+      - name: Parse results and notify Trello on failure
+        if: always()
+        env:
+          TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: node .github/scripts/daily-tests/notify-trello.js
