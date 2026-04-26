@@ -1949,6 +1949,14 @@ async function downloadFileFromLibrary(fileId){
     const response = await fetch(downloadUrl, {
       headers: { "Authorization": `Bearer ${token}` }
     });
+    if(response.status === 404){
+      showToast("File not found.", "error");
+      return null;
+    }
+    if(response.status === 403){
+      showToast("Access denied.", "error");
+      return null;
+    }
     if(!response.ok){
       const errorText = await response.text();
       throw new Error(`Download failed ${response.status}: ${errorText}`);
