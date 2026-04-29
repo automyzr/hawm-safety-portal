@@ -47,7 +47,7 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:
 .topbar h2{margin:0;font-size:28px}
 .topbar p{margin:6px 0 0;color:var(--muted);font-size:14px}
 .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.btn{border:none;background:var(--brand);color:#fff;padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:700;box-shadow:var(--shadow)}
+.btn{border:none;background:var(--brand);color:#fff;padding:12px 16px;border-radius:12px;cursor:pointer;font-weight:700;box-shadow:var(--shadow)}
 .btn.secondary{background:#fff;color:var(--brand);border:1px solid var(--line);box-shadow:none}
 select.company-switch{padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;background:#fff;color:var(--text)}
 .page{display:none}.page.active{display:block}
@@ -89,8 +89,12 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
 .sync-banner.sync-ok{background:#d1fae5;color:#065f46;border-bottom:1px solid #6ee7b7}
 .sync-banner.sync-pending{background:#fef3c7;color:#7c2d12;border-bottom:1px solid #f59e0b}
 .sync-banner.sync-failed{background:#fee2e2;color:#7f1d1d;border-bottom:1px solid #fca5a5}
+.hamburger-btn{display:none;position:fixed;top:12px;left:12px;background:var(--brand);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;z-index:1000;font-size:20px}
 @media (max-width:1180px){.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.grid.four,.grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:860px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.grid.two,.grid.three,.grid.four,.field-grid,.role-checks{grid-template-columns:1fr}.main{padding:14px}}
+@media (max-width:860px){.app{grid-template-columns:1fr}.hamburger-btn{display:block}.sidebar{position:fixed;left:-290px;top:0;height:100vh;transition:left 0.3s ease;z-index:999;overflow:auto}.sidebar.open{left:0}.grid.two,.grid.three,.grid.four,.field-grid,.role-checks{grid-template-columns:1fr}.main{padding:14px;margin-left:0}.cause-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:768px){.cause-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.cause-groups.two-col{grid-template-columns:1fr}}
+@media (max-width:480px){.cause-groups{grid-template-columns:1fr}.table-wrap{box-shadow:inset -20px 0 10px -10px rgba(0,0,0,0.1)}}
+@media (max-width:375px){.cause-groups{grid-template-columns:1fr}.table-wrap{box-shadow:inset -20px 0 10px -10px rgba(0,0,0,0.1)}}
 </style>
 </head>
 <body>
@@ -139,6 +143,8 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     <button onclick="confirmDiscard(true)">Discard</button>
     <button onclick="confirmDiscard(false)">Cancel</button>
   </dialog>
+
+  <button id="hamburger" class="hamburger-btn" onclick="toggleSidebar()">☰</button>
 
   <main class="main">
     <div class="page-banner">
@@ -1107,6 +1113,9 @@ function confirmDiscard(go){
   document.getElementById('discardDialog').close();
   if(go && _pendingEditCallback) _pendingEditCallback();
   _pendingEditCallback = null;
+}
+function toggleSidebar(){
+  document.querySelector('.sidebar').classList.toggle('open');
 }
 function isCardDirty(cardId){
   const card = document.getElementById(cardId);
@@ -6071,7 +6080,7 @@ function tryVerifyCA(index){
   if(!(r.completionDate && r.completionNotes && r.evidencePresent==="Yes" && r.evidenceDescription && r.verifiedBy)){ alert("Strict closeout: add completion date, completion notes, evidence present = Yes, evidence description, and verified by before closing."); return; }
   r.verifiedEffective=true; enforceEscalation(); saveDB(); renderAll();
 }
-document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", ()=>{ document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active")); document.querySelectorAll(".page").forEach(p=>p.classList.remove("active")); btn.classList.add("active"); byId(btn.dataset.page).classList.add("active"); byId("pageTitle").textContent=btn.textContent; }));
+document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", ()=>{ document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active")); document.querySelectorAll(".page").forEach(p=>p.classList.remove("active")); btn.classList.add("active"); byId(btn.dataset.page).classList.add("active"); byId("pageTitle").textContent=btn.textContent; const sidebar=document.querySelector('.sidebar'); if(sidebar) sidebar.classList.remove('open'); }));
 
 function populateMonthlySelectors(){
   const monthSel = byId("monthlyMonthSelect");
@@ -6268,7 +6277,7 @@ const personRows = Object.entries(personMap).map(([k,v]) => [k, Math.round(v.red
 byId("trendAssignedClosure").innerHTML = personRows.length ? "<ul class='list'>" + personRows.map(([k,v]) => `<li>${esc(k)} = ${esc(v)} hrs avg</li>`).join("") + "</ul>" : "No responsible-person completion-time data for selected period.";
 
 }
-document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", ()=>{ document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active")); document.querySelectorAll(".page").forEach(p=>p.classList.remove("active")); btn.classList.add("active"); byId(btn.dataset.page).classList.add("active"); byId("pageTitle").textContent=btn.textContent; }));
+document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", ()=>{ document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active")); document.querySelectorAll(".page").forEach(p=>p.classList.remove("active")); btn.classList.add("active"); byId(btn.dataset.page).classList.add("active"); byId("pageTitle").textContent=btn.textContent; const sidebar=document.querySelector('.sidebar'); if(sidebar) sidebar.classList.remove('open'); }));
 populateCORSectionDropdown();
 buildActionBlocks("inspectionActionBlocks","inspection");
 buildActionBlocks("incidentActionBlocks","incident");
