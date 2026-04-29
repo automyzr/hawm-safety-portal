@@ -563,8 +563,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="hazard" class="page">
-      <div class="card">
-        <h3 id="hazardTitle">Hazard Assessment Record</h3>
+      <div class="card" id="hazardCard" data-mode="add">
+        <h3 id="hazardCardTitle">Add Hazard Assessment Record</h3>
+        <div class="small" id="hazardCardSubtitle">Enter hazard assessment information for the selected company.</div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="hazard_company" readonly></div>
           <div class="field"><label>Date</label><input id="hazard_date" type="date"></div>
@@ -577,28 +578,12 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field span-2"><label>Proof Description</label><input id="hazard_proof_desc"></div>
           <div class="field"><label>Added By</label><input id="hazard_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="hazard_proof_date" type="date"></div>
-          <div class="field span-4"><label>Hazard Assessment Uploads</label><input id="hazard_upload_files" type="file" multiple onchange="showSelectedPortalFiles('hazard_upload_files','hazard_upload_preview')"><div id="hazard_upload_preview" class="file-preview">No files selected.</div></div>
+          <div class="field span-4"><label>Hazard Assessment Uploads</label><input id="hazard_upload_files" type="file" multiple onchange="showSelectedPortalFiles('hazard_upload_files','hazard_upload_preview')"><div id="hazard_upload_preview" class="file-preview">No files selected.</div><div id="hazard_existing_uploads" class="attachment-list"></div></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addHazard()">Add Record</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Hazard Assessment</h3>
-        <div class="small">Click Edit on a hazard assessment row, then update it here.</div>
-        <input id="hazard_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Date</label><input id="hazard_edit_date" type="date"></div>
-          <div class="field"><label>Task / Job</label><input id="hazard_edit_task"></div>
-          <div class="field"><label>Location</label><input id="hazard_edit_location"></div>
-          <div class="field"><label>Leader</label><input id="hazard_edit_leader"></div>
-          <div class="field span-2"><label>Hazards</label><textarea id="hazard_edit_hazards"></textarea></div>
-          <div class="field span-2"><label>Controls</label><textarea id="hazard_edit_controls"></textarea></div>
-          <div class="field"><label>Proof Present?</label><select id="hazard_edit_proof_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field span-2"><label>Proof Description</label><input id="hazard_edit_proof_desc"></div>
-          <div class="field"><label>Added By</label><input id="hazard_edit_proof_by"></div>
-          <div class="field"><label>Date Added</label><input id="hazard_edit_proof_date" type="date"></div>
-          <div class="field span-4"><label>Hazard Assessment Uploads</label><input id="hazard_edit_upload_files" type="file" multiple onchange="showSelectedPortalFiles('hazard_edit_upload_files','hazard_edit_upload_preview')"><div id="hazard_edit_upload_preview" class="file-preview">No files selected.</div><div id="hazard_existing_uploads" class="attachment-list"></div></div>
+        <div class="footer-note">
+          <button class="btn" id="hazardSaveBtn" onclick="saveEditedHazard()">Add Record</button>
+          <button class="btn secondary" onclick="clearHazardEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedHazard()">Save Changes</button> <button class="btn secondary" onclick="clearHazardEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="hazardTable"></table></div></div>
     </section>
@@ -5665,35 +5650,88 @@ async function saveEditedIncident(){
   }
 }
 
-function editHazard(index){
-  const rows = filterByCompany(db.hazard); const rec = rows[index]; if(!rec) return;
-  const actualIndex = db.hazard.findIndex(x => x === rec);
-  byId("hazard_edit_index").value = actualIndex;
-  byId("hazard_edit_date").value = rec.date || "";
-  byId("hazard_edit_task").value = rec.task || "";
-  byId("hazard_edit_location").value = rec.location || "";
-  byId("hazard_edit_leader").value = rec.leader || "";
-  byId("hazard_edit_hazards").value = rec.hazards || "";
-  byId("hazard_edit_controls").value = rec.controls || "";
-  byId("hazard_edit_proof_present").value = rec.proofPresent || "No";
-  byId("hazard_edit_proof_desc").value = rec.proofDescription || "";
-  byId("hazard_edit_proof_by").value = rec.addedBy || "";
-  byId("hazard_edit_proof_date").value = rec.dateAdded || "";
-  byId("hazard_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
+function editHazard(id){
+  const card = document.getElementById('hazardCard');
+  if(isCardDirty('hazardCard')){
+    _pendingEditCallback = () => _doEditHazard(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditHazard(id);
+}
+function _doEditHazard(id){
+  const card = document.getElementById('hazardCard');
+  const rows = filterByCompany(db.hazard);
+  let record = null;
+  if(typeof id === 'number'){
+    record = rows[id];
+  } else {
+    record = db.hazard.find(x => x.id === id || x.guid === id);
+  }
+  if(!record) return;
+  byId("hazard_date").value = record.date || "";
+  byId("hazard_task").value = record.task || "";
+  byId("hazard_location").value = record.location || "";
+  byId("hazard_leader").value = record.leader || "";
+  byId("hazard_hazards").value = record.hazards || "";
+  byId("hazard_controls").value = record.controls || "";
+  byId("hazard_proof_present").value = record.proofPresent || "No";
+  byId("hazard_proof_desc").value = record.proofDescription || "";
+  byId("hazard_proof_by").value = record.addedBy || "";
+  byId("hazard_proof_date").value = record.dateAdded || "";
+  byId("hazard_existing_uploads").innerHTML = renderPortalFileLinks(record.uploads || [], {allowDelete: true});
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.hazard.indexOf(record);
+  document.getElementById('hazardCardTitle').textContent = 'Edit Hazard Assessment Record';
+  document.getElementById('hazardCardSubtitle').textContent = record.task || record.date || '';
+  document.getElementById('hazardSaveBtn').textContent = 'Save Changes';
+  snapshotCard('hazardCard');
 }
 function clearHazardEditor(){
-  ["hazard_edit_index","hazard_edit_date","hazard_edit_task","hazard_edit_location","hazard_edit_leader","hazard_edit_hazards","hazard_edit_controls","hazard_edit_proof_desc","hazard_edit_proof_by","hazard_edit_proof_date"].forEach(id => byId(id).value = "");
-  byId("hazard_edit_proof_present").value = "No";
-  clearPortalFilePicker("hazard_edit_upload_files","hazard_edit_upload_preview");
+  const card = document.getElementById('hazardCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('hazardCardTitle').textContent = 'Add Hazard Assessment Record';
+  document.getElementById('hazardCardSubtitle').textContent = 'Enter hazard assessment information for the selected company.';
+  document.getElementById('hazardSaveBtn').textContent = 'Add Record';
+  ["hazard_date","hazard_task","hazard_location","hazard_leader","hazard_hazards","hazard_controls","hazard_proof_desc","hazard_proof_by","hazard_proof_date"].forEach(id => byId(id).value = "");
+  byId("hazard_proof_present").value = "No";
+  clearPortalFilePicker("hazard_upload_files","hazard_upload_preview");
   byId("hazard_existing_uploads").innerHTML = "";
+  clearSnapshot('hazardCard');
 }
 async function saveEditedHazard(){
-  const index = Number(byId("hazard_edit_index").value); if(Number.isNaN(index) || !db.hazard[index]){ alert("Select a hazard row first."); return; }
+  const card = document.getElementById('hazardCard');
+  const mode = card.dataset.mode || 'add';
+  const editId = card.dataset.editId || '';
+  let index = -1;
+  if(mode === 'edit'){
+    if(editId === '') { alert("Select a hazard row first."); return; }
+    if(typeof editId === 'string'){
+      if(editId.match(/^\d+$/)){
+        index = Number(editId);
+      } else {
+        index = db.hazard.findIndex(x => x.id === editId || x.guid === editId);
+      }
+    }
+    if(index < 0 || !db.hazard[index]){ alert("Select a hazard row first."); return; }
+  }
+  if(mode === 'add'){
+    const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+    const uploads = [];
+    for(const file of Array.from(byId("hazard_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
+    const entity = {company, date:byId("hazard_date").value, task:byId("hazard_task").value.trim(), location:byId("hazard_location").value.trim(), leader:byId("hazard_leader").value.trim(), hazards:byId("hazard_hazards").value, controls:byId("hazard_controls").value, proofPresent:byId("hazard_proof_present").value, proofDescription:byId("hazard_proof_desc").value.trim(), addedBy:byId("hazard_proof_by").value.trim(), dateAdded:byId("hazard_proof_date").value, uploads};
+    db.hazard.push(entity);
+    clearPortalFilePicker("hazard_upload_files","hazard_upload_preview"); saveDB(); renderAll();
+    const fields = {Title: entity.task || "Hazard", Company: entity.company, "Assessment_x0020_Date": entity.date, "Area_x002f_Process": entity.task, Location: entity.location, "Assigned_x0020_To": entity.leader, "Hazard_x0020_Type": entity.hazards, Controls: entity.controls, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+    await syncCreateToSP("hazard", "write_enabled_hazard", entity, fields);
+    return;
+  }
   const oldState = JSON.parse(JSON.stringify(db.hazard[index]));
   const existing = db.hazard[index].uploads || [];
   const added = [];
-  for(const file of Array.from(byId("hazard_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
-  db.hazard[index] = {...db.hazard[index], date:byId("hazard_edit_date").value, task:byId("hazard_edit_task").value.trim(), location:byId("hazard_edit_location").value.trim(), leader:byId("hazard_edit_leader").value.trim(), hazards:byId("hazard_edit_hazards").value, controls:byId("hazard_edit_controls").value, proofPresent:byId("hazard_edit_proof_present").value, proofDescription:byId("hazard_edit_proof_desc").value.trim(), addedBy:byId("hazard_edit_proof_by").value.trim(), dateAdded:byId("hazard_edit_proof_date").value, uploads:[...existing, ...added]};
+  for(const file of Array.from(byId("hazard_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+  db.hazard[index] = {...db.hazard[index], date:byId("hazard_date").value, task:byId("hazard_task").value.trim(), location:byId("hazard_location").value.trim(), leader:byId("hazard_leader").value.trim(), hazards:byId("hazard_hazards").value, controls:byId("hazard_controls").value, proofPresent:byId("hazard_proof_present").value, proofDescription:byId("hazard_proof_desc").value.trim(), addedBy:byId("hazard_proof_by").value.trim(), dateAdded:byId("hazard_proof_date").value, uploads:[...existing, ...added]};
   persistLocalSnapshot();
   if(!FEATURE_FLAGS.write_enabled_hazard){
     showToast("Read-only mode. Changes saved locally only.", "info");
@@ -6086,7 +6124,7 @@ function renderAll(){
   renderMaintRecords();
   renderTable(byId("inspectionTable"), ["Company","Date","Crew","Location","Inspector","Findings","Proof Present","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], inspections.map((x,i) => [esc(x.company), esc(x.date), esc(x.crew), esc(x.location), esc(x.inspector), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editInspection('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("incidentTable"), ["Company","Incident #","Date","Employee","Witnesses","Location","Severity","Immediate Causes","Basic Causes","Issue Tags","Description","Photos","Video","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], incidents.map((x,i) => [esc(x.company), esc(x.incidentNumber || ""), esc(x.date), esc(x.employee), esc((x.witnesses || []).join(", ")), esc(x.location), statusPill(x.severity), esc((Array.isArray(x.immediateCause) ? x.immediateCause : (x.immediateCause ? [x.immediateCause] : [])).join(", ")), esc((Array.isArray(x.basicCause) ? x.basicCause : (x.basicCause ? [x.basicCause] : [])).join(", ")), esc((x.issueTags || []).join(", ")), esc(x.description), statusPill(x.photosPresent), statusPill(x.videoPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editIncident('${x.id || x.guid || i}')">Edit</button>`]));
-  renderTable(byId("hazardTable"), ["Company","Date","Task","Location","Leader","Hazards","Controls","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], hazard.map((x,i) => [esc(x.company), esc(x.date), esc(x.task), esc(x.location), esc(x.leader), esc(x.hazards), esc(x.controls), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editHazard(${i})">Edit</button>`]));
+  renderTable(byId("hazardTable"), ["Company","Date","Task","Location","Leader","Hazards","Controls","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], hazard.map((x,i) => [esc(x.company), esc(x.date), esc(x.task), esc(x.location), esc(x.leader), esc(x.hazards), esc(x.controls), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editHazard('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("committeeTable"), ["Company","Name","Role","Next Meeting Due","Notes","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], committee.map((x,i) => [esc(x.company), esc(x.name), esc(x.role), esc(x.due), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editCommittee(${i})">Edit</button>`]));
   renderTable(byId("caTable"), ["Company","Source","Reference","Priority","Assigned","Due","Status","Action","Completion","Evidence Tracker","Verification","Escalation"], reminders.map((x,i) => [
     esc(x.company), esc(x.source), esc(x.reference), statusPill(x.priority),
