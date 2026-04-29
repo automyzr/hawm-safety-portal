@@ -317,8 +317,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
 
     <section id="documents" class="page">
       <div class="grid two">
-        <div class="card">
-          <h3>Document Register</h3>
+        <div class="card" id="documentCard" data-mode="add">
+          <h3 id="documentCardTitle">Add Document Record</h3>
+          <div class="small" id="documentCardSubtitle"></div>
           <div class="field-grid">
             <div class="field"><label>Company</label><input id="doc_company" readonly></div>
             <div class="field"><label>Document Name</label><input id="doc_name"></div>
@@ -339,7 +340,10 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
             <div class="field"><label>Added By</label><input id="doc_file_by"></div>
             <div class="field"><label>Date Added</label><input id="doc_file_date" type="date"></div>
           </div>
-          <div class="footer-note"><button class="btn" onclick="addDocument()">Add Document Record</button></div>
+          <div class="footer-note">
+            <button class="btn" id="documentSaveBtn" onclick="saveEditedDocument()">Add Document Record</button>
+            <button class="btn secondary" onclick="clearDocumentEditor()">New / Clear</button>
+          </div>
         </div>
         <div class="card">
           <h3>Batch Document Tracker</h3>
@@ -355,34 +359,6 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
             <div class="field"><label>Next Review Date</label><input id="doc_batch_review" type="date"></div>
           </div>
           <div class="footer-note"><button class="btn" onclick="batchAddDocuments()">Create Document Rows</button></div>
-        </div>
-        <div class="card">
-          <h3>Edit Selected Document</h3>
-          <div class="small">Click Edit on a row below, then update document control fields here.</div>
-          <input id="doc_edit_index" type="hidden">
-          <div class="field-grid">
-            <div class="field"><label>Document Name</label><input id="doc_edit_name"></div>
-            <div class="field"><label>Document Number</label><input id="doc_edit_number"></div>
-            <div class="field"><label>Revision</label><input id="doc_edit_revision"></div>
-            <div class="field"><label>Owner</label><input id="doc_edit_owner"></div>
-            <div class="field"><label>Document Type</label><select id="doc_edit_type"><option>Policy</option><option>Procedure</option><option>Form</option><option>Safe Work Practice</option><option>Safe Job Procedure</option><option>Program</option><option>Plan</option><option>Record</option><option>Matrix</option><option>Other</option></select></div>
-            <div class="field"><label>Effective Date</label><input id="doc_edit_effective" type="date"></div>
-            <div class="field"><label>Last Reviewed Date</label><input id="doc_edit_last_reviewed" type="date" onchange="setNextReviewFromLastReviewed('doc_edit_last_reviewed','doc_edit_review')"></div>
-            <div class="field"><label>Next Review Date</label><input id="doc_edit_review" type="date"></div>
-            <div class="field"><label>Manual Section</label><input id="doc_edit_manual"></div>
-            <div class="field"><label>COR Section</label><select id="doc_edit_cor"></select></div>
-            <div class="field"><label>Status</label><select id="doc_edit_status"><option>Active</option><option>Archived</option></select></div>
-            <div class="field"><label>Archived Date</label><input id="doc_edit_archivedDate" type="date" readonly></div>
-            <div class="field span-4"><label>Notes</label><textarea id="doc_edit_notes"></textarea></div>
-            <div class="field"><label>File / Proof Present?</label><select id="doc_edit_file_present"><option>No</option><option>Yes</option></select></div>
-            <div class="field span-2"><label>File Name / Description</label><input id="doc_edit_file_name"></div>
-            <div class="field"><label>Added By</label><input id="doc_edit_file_by"></div>
-            <div class="field"><label>Date Added</label><input id="doc_edit_file_date" type="date"></div>
-          </div>
-          <div class="footer-note">
-            <button class="btn" onclick="saveEditedDocument()">Save Changes</button>
-            <button class="btn secondary" onclick="clearDocumentEditor()">Clear</button>
-          </div>
         </div>
       </div>
       <div class="card"><h3>Documents Table</h3><div class="table-wrap"><table id="documentTable"></table></div></div>
@@ -987,7 +963,7 @@ const corSections = [
 ];
 
 function populateCORSectionDropdown(){
-  const sel = byId("doc_edit_cor");
+  const sel = byId("doc_cor");
   if(!sel) return;
   sel.innerHTML = '<option value=""></option>' + corSections.map(section => `<option value="${esc(section)}">${esc(section)}</option>`).join("");
 }
@@ -5048,103 +5024,166 @@ function addTraining(){
   clearTrainingEditor();
 }
 
-function editDocument(index){
+function editDocument(id){
+  const card = document.getElementById('documentCard');
+  if(isCardDirty('documentCard')){
+    _pendingEditCallback = () => _doEditDocument(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditDocument(id);
+}
+function _doEditDocument(id){
+  const card = document.getElementById('documentCard');
   const docs = filterByCompany(db.documents);
-  const d = docs[index];
+  let d = null;
+  if(typeof id === 'number'){
+    d = docs[id];
+  } else {
+    d = db.documents.find(x => x.id === id || x.guid === id);
+  }
   if(!d) return;
-  const actualIndex = db.documents.findIndex(x => x === d);
-  byId("doc_edit_index").value = actualIndex;
-  byId("doc_edit_name").value = d.name || "";
-  byId("doc_edit_number").value = d.number || "";
-  byId("doc_edit_revision").value = d.revision || "";
-  byId("doc_edit_owner").value = d.owner || "";
-  byId("doc_edit_type").value = d.type || "Other";
-  byId("doc_edit_effective").value = d.effective || "";
-  byId("doc_edit_last_reviewed").value = d.lastReviewed || "";
-  byId("doc_edit_review").value = d.review || "";
-  byId("doc_edit_manual").value = d.manual || "";
-  byId("doc_edit_cor").value = d.cor || "";
-  byId("doc_edit_status").value = d.status || "Active";
-  byId("doc_edit_archivedDate").value = d.archivedDate || "";
-  byId("doc_edit_notes").value = d.notes || "";
-  byId("doc_edit_file_present").value = d.filePresent || "No";
-  byId("doc_edit_file_name").value = d.fileName || "";
-  byId("doc_edit_file_by").value = d.addedBy || "";
-  byId("doc_edit_file_date").value = d.dateAdded || "";
-  alert("Document loaded into editor.");
+  byId("doc_name").value = d.name || "";
+  byId("doc_number").value = d.number || "";
+  byId("doc_revision").value = d.revision || "";
+  byId("doc_owner").value = d.owner || "";
+  byId("doc_type").value = d.type || "Other";
+  byId("doc_effective").value = d.effective || "";
+  byId("doc_last_reviewed").value = d.lastReviewed || "";
+  byId("doc_review").value = d.review || "";
+  byId("doc_manual").value = d.manual || "";
+  byId("doc_cor").value = d.cor || "";
+  byId("doc_status").value = d.status || "Active";
+  byId("doc_archivedDate").value = d.archivedDate || "";
+  byId("doc_notes").value = d.notes || "";
+  byId("doc_file_present").value = d.filePresent || "No";
+  byId("doc_file_name").value = d.fileName || "";
+  byId("doc_file_by").value = d.addedBy || "";
+  byId("doc_file_date").value = d.dateAdded || "";
+  card.dataset.mode = 'edit';
+  card.dataset.editId = d.id || d.guid || db.documents.indexOf(d);
+  document.getElementById('documentCardTitle').textContent = 'Edit Document';
+  document.getElementById('documentCardSubtitle').textContent = d.name || '';
+  document.getElementById('documentSaveBtn').textContent = 'Save Changes';
+  snapshotCard('documentCard');
 }
 function clearDocumentEditor(){
-  ["doc_edit_index","doc_edit_name","doc_edit_number","doc_edit_revision","doc_edit_owner","doc_edit_effective","doc_edit_last_reviewed","doc_edit_review","doc_edit_manual","doc_edit_cor","doc_edit_notes","doc_edit_file_name","doc_edit_file_by","doc_edit_file_date","doc_edit_archivedDate"].forEach(id => byId(id).value = "");
-  byId("doc_edit_type").value = "Policy";
-  byId("doc_edit_status").value = "Active";
-  byId("doc_edit_file_present").value = "No";
-  byId("doc_edit_cor").value = "";
+  const card = document.getElementById('documentCard');
+  byId("doc_name").value = "";
+  byId("doc_number").value = "";
+  byId("doc_revision").value = "";
+  byId("doc_owner").value = "";
+  byId("doc_effective").value = "";
+  byId("doc_last_reviewed").value = "";
+  byId("doc_review").value = "";
+  byId("doc_manual").value = "";
+  byId("doc_notes").value = "";
+  byId("doc_file_name").value = "";
+  byId("doc_file_by").value = "";
+  byId("doc_file_date").value = "";
+  byId("doc_archivedDate").value = "";
+  byId("doc_type").value = "Policy";
+  byId("doc_status").value = "Active";
+  byId("doc_file_present").value = "No";
+  byId("doc_cor").value = "";
+  card.dataset.mode = 'add';
+  delete card.dataset.editId;
+  document.getElementById('documentCardTitle').textContent = 'Add Document Record';
+  document.getElementById('documentCardSubtitle').textContent = '';
+  document.getElementById('documentSaveBtn').textContent = 'Add Document Record';
+  snapshotCard('documentCard');
 }
 async function saveEditedDocument(){
-  const index = Number(byId("doc_edit_index").value);
-  if(Number.isNaN(index) || !db.documents[index]){
-    alert("Select a document row first.");
-    return;
-  }
-  const company = db.documents[index].company;
-  const docName = byId("doc_edit_name").value.trim();
-  const status = byId("doc_edit_status").value || "Active";
-  const oldState = JSON.parse(JSON.stringify(db.documents[index]));
-  // Archive lifecycle: status + archivedDate; legacy default Active; adding/activating same-name archives older
-  if(status === "Active"){
-    db.documents.forEach((d, i) => {
-      if(i !== index && d.company === company && d.name === docName && (d.status === "Active" || !d.status)){
-        d.status = "Archived";
-        d.archivedDate = new Date().toISOString().slice(0,10);
+  try{
+    const card = document.getElementById('documentCard');
+    const mode = card.dataset.mode || 'add';
+    if(mode === 'add'){
+      const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+      const docName = byId("doc_name").value.trim();
+      const status = byId("doc_status").value || "Active";
+      if(status === "Active"){
+        db.documents.forEach(d => {
+          if(d.company === company && d.name === docName && (d.status === "Active" || !d.status)){
+            d.status = "Archived";
+            d.archivedDate = new Date().toISOString().slice(0,10);
+          }
+        });
       }
-    });
-  }
-  db.documents[index] = {
-    ...db.documents[index],
-    name: docName,
-    number: byId("doc_edit_number").value.trim(),
-    revision: byId("doc_edit_revision").value.trim(),
-    owner: byId("doc_edit_owner").value.trim(),
-    type: byId("doc_edit_type").value,
-    effective: byId("doc_edit_effective").value,
-    lastReviewed: byId("doc_edit_last_reviewed").value,
-    review: byId("doc_edit_review").value,
-    manual: byId("doc_edit_manual").value.trim(),
-    cor: byId("doc_edit_cor").value.trim(),
-    status,
-    archivedDate: status === "Archived" ? byId("doc_edit_archivedDate").value : null,
-    notes: byId("doc_edit_notes").value,
-    filePresent: byId("doc_edit_file_present").value,
-    fileName: byId("doc_edit_file_name").value.trim(),
-    addedBy: byId("doc_edit_file_by").value.trim(),
-    dateAdded: byId("doc_edit_file_date").value
-  };
-  persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_documents){
-    showToast("Read-only mode. Changes saved locally only.", "info");
-    clearDocumentEditor();
-    rebuildAll();
-    return;
-  }
-  try {
-    const doc = db.documents[index];
-    const fields = {Title: doc.name, Company: doc.company, "COR_x0020_Section": doc.cor, "Document_x0020_Type": doc.type, "Last_x0020_Review_x0020_Date": doc.lastReviewed, "Next_x0020_Review_x0020_Due": doc.review, Number: doc.number, Revision: doc.revision, Owner: doc.owner, Effective: doc.effective, Status: doc.status, ArchivedDate: doc.archivedDate, Notes: doc.notes, ManualSection: doc.manual, FilePresent: doc.filePresent, FileName: doc.fileName, AddedBy: doc.addedBy, DateAdded: doc.dateAdded};
-    if(!doc.id){
-      const result = await graphCreateItem("documents", fields);
-      doc.id = result.id;
-      doc.etag = result.etag;
+      const entity = {company, name:docName, number:byId("doc_number").value.trim(), revision:byId("doc_revision").value.trim(), owner:byId("doc_owner").value.trim(), type:byId("doc_type").value, effective:byId("doc_effective").value, lastReviewed:byId("doc_last_reviewed").value, review:byId("doc_review").value, manual:byId("doc_manual").value.trim(), cor:byId("doc_cor").value.trim(), status, archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null, notes:byId("doc_notes").value, filePresent:byId("doc_file_present").value, fileName:byId("doc_file_name").value.trim(), addedBy:byId("doc_file_by").value.trim(), dateAdded:byId("doc_file_date").value};
+      db.documents.push(entity);
+      rebuildAll();
+      const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+      await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
     } else {
-      await graphUpdateItem("documents", doc.id, fields, doc.etag);
+      const editId = card.dataset.editId;
+      let index = Number(editId);
+      if(Number.isNaN(index)){
+        index = db.documents.findIndex(d => d.id === editId || d.guid === editId);
+      }
+      if(Number.isNaN(index) || !db.documents[index]){
+        alert("Select a document row first.");
+        return;
+      }
+      const company = db.documents[index].company;
+      const docName = byId("doc_name").value.trim();
+      const status = byId("doc_status").value || "Active";
+      const oldState = JSON.parse(JSON.stringify(db.documents[index]));
+      if(status === "Active"){
+        db.documents.forEach((d, i) => {
+          if(i !== index && d.company === company && d.name === docName && (d.status === "Active" || !d.status)){
+            d.status = "Archived";
+            d.archivedDate = new Date().toISOString().slice(0,10);
+          }
+        });
+      }
+      db.documents[index] = {
+        ...db.documents[index],
+        name: docName,
+        number: byId("doc_number").value.trim(),
+        revision: byId("doc_revision").value.trim(),
+        owner: byId("doc_owner").value.trim(),
+        type: byId("doc_type").value,
+        effective: byId("doc_effective").value,
+        lastReviewed: byId("doc_last_reviewed").value,
+        review: byId("doc_review").value,
+        manual: byId("doc_manual").value.trim(),
+        cor: byId("doc_cor").value.trim(),
+        status,
+        archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null,
+        notes: byId("doc_notes").value,
+        filePresent: byId("doc_file_present").value,
+        fileName: byId("doc_file_name").value.trim(),
+        addedBy: byId("doc_file_by").value.trim(),
+        dateAdded: byId("doc_file_date").value
+      };
+      persistLocalSnapshot();
+      if(!FEATURE_FLAGS.write_enabled_documents){
+        showToast("Read-only mode. Changes saved locally only.", "info");
+        clearDocumentEditor();
+        rebuildAll();
+        return;
+      }
+      try {
+        const doc = db.documents[index];
+        const fields = {Title: doc.name, Company: doc.company, "COR_x0020_Section": doc.cor, "Document_x0020_Type": doc.type, "Last_x0020_Review_x0020_Date": doc.lastReviewed, "Next_x0020_Review_x0020_Due": doc.review, Number: doc.number, Revision: doc.revision, Owner: doc.owner, Effective: doc.effective, Status: doc.status, ArchivedDate: doc.archivedDate, Notes: doc.notes, ManualSection: doc.manual, FilePresent: doc.filePresent, FileName: doc.fileName, AddedBy: doc.addedBy, DateAdded: doc.dateAdded};
+        if(!doc.id){
+          const result = await graphCreateItem("documents", fields);
+          doc.id = result.id;
+          doc.etag = result.etag;
+        } else {
+          await graphUpdateItem("documents", doc.id, fields, doc.etag);
+        }
+        logAuditEntry({user: "current_user", list: "documents", itemId: doc.id, action: "UPDATE", delta: fields});
+        showToast("✓ Saved to SharePoint", "success");
+      } catch(err){
+        console.error("Write error:", err);
+        db.documents[index] = oldState;
+        showToast(`Sync failed: ${err.message || err.code}`, "error");
+      }
+      clearDocumentEditor();
+      rebuildAll();
     }
-    logAuditEntry({user: "current_user", list: "documents", itemId: doc.id, action: "UPDATE", delta: fields});
-    showToast("✓ Saved to SharePoint", "success");
-  } catch(err){
-    console.error("Write error:", err);
-    db.documents[index] = oldState;
-    showToast(`Sync failed: ${err.message || err.code}`, "error");
-  }
-  clearDocumentEditor();
-  rebuildAll();
+  } catch(e){ console.error("saveEditedDocument error:",e); alert("Failed to save document: "+e.message); }
 }
 
 
@@ -5157,25 +5196,6 @@ function setNextReviewFromLastReviewed(lastId, nextId){
   byId(nextId).value = d.toISOString().slice(0,10);
 }
 
-async function addDocument(){
-  const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-  const docName = byId("doc_name").value.trim();
-  const status = byId("doc_status").value || "Active";
-  // Archive lifecycle: status + archivedDate; legacy default Active; adding/activating same-name archives older
-  if(status === "Active"){
-    db.documents.forEach(d => {
-      if(d.company === company && d.name === docName && (d.status === "Active" || !d.status)){
-        d.status = "Archived";
-        d.archivedDate = new Date().toISOString().slice(0,10);
-      }
-    });
-  }
-  const entity = {company, name:docName, number:byId("doc_number").value.trim(), revision:byId("doc_revision").value.trim(), owner:byId("doc_owner").value.trim(), type:byId("doc_type").value, effective:byId("doc_effective").value, lastReviewed:byId("doc_last_reviewed").value, review:byId("doc_review").value, manual:byId("doc_manual").value.trim(), cor:byId("doc_cor").value.trim(), status, archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null, notes:byId("doc_notes").value, filePresent:byId("doc_file_present").value, fileName:byId("doc_file_name").value.trim(), addedBy:byId("doc_file_by").value.trim(), dateAdded:byId("doc_file_date").value};
-  db.documents.push(entity);
-  rebuildAll();
-  const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
-  await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
-}
 async function batchAddDocuments(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const files = Array.from(byId("doc_batch_files").files || []);
@@ -5859,7 +5879,7 @@ function renderAll(){
   renderTable(byId("peopleTable"), ["Company","Employee","Roles","Department","Status","Edit"], people.map((x,i) => [esc(x.company), esc(x.name), esc((x.roles||[]).join(", ")), esc(x.department), statusPill(x.status), `<button class="btn secondary" onclick="editPerson('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingGapTable"), ["Company","Employee","Roles","Required Course","Status","Due / Expiry","Notes"], gaps.map(x => [esc(x.company), esc(x.employee), esc(x.roles), esc(x.course), statusPill(x.status), esc(x.due), esc(x.notes)]));
-  renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Edit"], docs.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary" onclick="editDocument(${i})">Edit</button>`]));
+  renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Edit"], docs.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary" onclick="editDocument('${x.id || x.guid || i}')">Edit</button>`]));
   renderArchivedDocuments();
   renderTable(byId("manualTable"), ["Company","Section","Owner","Status","Linked Documents"], manual.map(x => [esc(x.company), esc(x.section), esc(x.owner), statusPill(x.status), esc(x.document)]));
   renderTable(byId("corTable"), ["Section","Required Types","Present Types","Missing Types","Documents","Valid Docs","Status","Notes"], cor.map(x => [esc(x.section), esc(x.requiredTypes || ""), esc(x.presentTypes || ""), esc(x.missingTypes || ""), esc(x.documentCount || 0), esc(x.validDocumentCount || 0), statusPill(x.status), esc(x.notes)]));
