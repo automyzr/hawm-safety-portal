@@ -700,8 +700,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="maintenance_records" class="page">
-      <div class="card">
-        <h2>Maintenance Records</h2>
+      <div class="card" id="maintRecordCard" data-mode="add">
+        <h3 id="maintRecordCardTitle">Add Maintenance Record</h3>
+        <div class="small" id="maintRecordCardSubtitle">Enter maintenance information for the selected truck.</div>
         <div class="field-grid">
           <div class="field"><label>Truck</label><select id="maint_truck"></select></div>
           <div class="field"><label>Assigned To</label><input id="maint_assignedTo"></div>
@@ -725,35 +726,10 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Motor Oil (L)</label><input id="maint_motorOil" type="number" step="0.01"></div>
           <div class="field"><label>Uploads</label><input id="maint_uploads" type="file" multiple></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="(async()=>{ try { await addMaintRecord(); } catch(e){ console.error('addMaintRecord failed', e); } })()">Add</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
-      </div>
-      <div class="card" id="maintRecordEditorCard" style="display:none;">
-        <h3>Edit Maintenance Record</h3>
-        <div class="field-grid">
-          <input id="maint_edit_index" type="hidden">
-          <div class="field"><label>Truck</label><select id="maint_edit_truck"></select></div>
-          <div class="field"><label>Assigned To</label><input id="maint_edit_assignedTo"></div>
-          <div class="field"><label>Maintenance Location</label><select id="maint_edit_location"></select></div>
-          <div class="field"><label>Maintenance Type</label><input id="maint_edit_type"></div>
-          <div class="field"><label>Linked Incident</label><select id="maint_edit_linkedIncident"><option value="">-- None --</option></select></div>
-          <div class="field"><label>Issue Category</label><input id="maint_edit_issueCategory"></div>
-          <div class="field span-2"><label>Description</label><textarea id="maint_edit_description"></textarea></div>
-          <div class="field"><label>Downtime Start</label><input id="maint_edit_downtimeStart" type="datetime-local"></div>
-          <div class="field"><label>Downtime End</label><input id="maint_edit_downtimeEnd" type="datetime-local"></div>
-          <div class="field"><label>Repair Start</label><input id="maint_edit_repairStart" type="datetime-local"></div>
-          <div class="field"><label>Repair End</label><input id="maint_edit_repairEnd" type="datetime-local"></div>
-          <div class="field"><label>Parts Ordered (Date)</label><input id="maint_edit_partsOrdered" type="date"></div>
-          <div class="field"><label>Parts Arrived (Date)</label><input id="maint_edit_partsArrived" type="date"></div>
-          <div class="field"><label>Invoice Number</label><input id="maint_edit_invoiceNumber"></div>
-          <div class="field"><label>Invoice Date</label><input id="maint_edit_invoiceDate" type="date"></div>
-          <div class="field"><label>Invoice Parts Cost</label><input id="maint_edit_invoicePartsCost" type="number" step="0.01"></div>
-          <div class="field"><label>Invoice Labour Cost</label><input id="maint_edit_invoiceLabourCost" type="number" step="0.01"></div>
-          <div class="field"><label>Coolant (L)</label><input id="maint_edit_coolant" type="number" step="0.01"></div>
-          <div class="field"><label>Hydraulic Oil (L)</label><input id="maint_edit_hydraulicOil" type="number" step="0.01"></div>
-          <div class="field"><label>Motor Oil (L)</label><input id="maint_edit_motorOil" type="number" step="0.01"></div>
-          <div class="field"><label>Uploads</label><input id="maint_edit_uploads" type="file" multiple></div>
+        <div class="footer-note">
+          <button class="btn" id="maintRecordSaveBtn" onclick="saveEditedMaintRecord()">Add</button>
+          <button class="btn secondary" onclick="clearMaintRecordEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="(async()=>{ try { await saveEditedMaintRecord(); } catch(e){ console.error('saveEditedMaintRecord failed', e); } })()">Save Changes</button> <button class="btn secondary" onclick="clearMaintRecordEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="maintRecordsTable"></table></div></div>
     </section>
@@ -4118,137 +4094,221 @@ function computeMaintMetrics(rec,truckProfile,maintLocation){
 }
 
 async function addMaintRecord(){
-  const truck=byId("maint_truck").value||"";
-  const assignedTo=byId("maint_assignedTo").value||"";
-  const location=byId("maint_location").value||"";
-  const type=byId("maint_type").value||"";
-  const linkedIncident=byId("maint_linkedIncident").value||"";
-  const issueCategory=byId("maint_issueCategory").value||"";
-  const description=byId("maint_description").value||"";
-  const downtimeStart=byId("maint_downtimeStart").value||"";
-  const downtimeEnd=byId("maint_downtimeEnd").value||"";
-  const repairStart=byId("maint_repairStart").value||"";
-  const repairEnd=byId("maint_repairEnd").value||"";
-  const partsOrdered=byId("maint_partsOrdered").value||"";
-  const partsArrived=byId("maint_partsArrived").value||"";
-  const invoiceNumber=byId("maint_invoiceNumber").value||"";
-  const invoiceDate=byId("maint_invoiceDate").value||"";
-  const invoicePartsCost=Number(byId("maint_invoicePartsCost").value)||0;
-  const invoiceLabourCost=Number(byId("maint_invoiceLabourCost").value)||0;
-  const coolant=Number(byId("maint_coolant").value)||0;
-  const hydraulicOil=Number(byId("maint_hydraulicOil").value)||0;
-  const motorOil=Number(byId("maint_motorOil").value)||0;
-  const uploads=[];
+  try {
+    const truck=byId("maint_truck").value||"";
+    const assignedTo=byId("maint_assignedTo").value||"";
+    const location=byId("maint_location").value||"";
+    const type=byId("maint_type").value||"";
+    const linkedIncident=byId("maint_linkedIncident").value||"";
+    const issueCategory=byId("maint_issueCategory").value||"";
+    const description=byId("maint_description").value||"";
+    const downtimeStart=byId("maint_downtimeStart").value||"";
+    const downtimeEnd=byId("maint_downtimeEnd").value||"";
+    const repairStart=byId("maint_repairStart").value||"";
+    const repairEnd=byId("maint_repairEnd").value||"";
+    const partsOrdered=byId("maint_partsOrdered").value||"";
+    const partsArrived=byId("maint_partsArrived").value||"";
+    const invoiceNumber=byId("maint_invoiceNumber").value||"";
+    const invoiceDate=byId("maint_invoiceDate").value||"";
+    const invoicePartsCost=Number(byId("maint_invoicePartsCost").value)||0;
+    const invoiceLabourCost=Number(byId("maint_invoiceLabourCost").value)||0;
+    const coolant=Number(byId("maint_coolant").value)||0;
+    const hydraulicOil=Number(byId("maint_hydraulicOil").value)||0;
+    const motorOil=Number(byId("maint_motorOil").value)||0;
+    const uploads=[];
 
-  const rec={id:"maint_"+Date.now(),truck,assignedTo,location,type,linkedIncident,issueCategory,description,downtimeStart,downtimeEnd,repairStart,repairEnd,partsOrdered,partsArrived,invoiceNumber,invoiceDate,invoicePartsCost,invoiceLabourCost,coolant,hydraulicOil,motorOil,uploads};
+    const rec={id:"maint_"+Date.now(),truck,assignedTo,location,type,linkedIncident,issueCategory,description,downtimeStart,downtimeEnd,repairStart,repairEnd,partsOrdered,partsArrived,invoiceNumber,invoiceDate,invoicePartsCost,invoiceLabourCost,coolant,hydraulicOil,motorOil,uploads};
 
-  const truckIdx=Number(truck);
-  const locIdx=Number(location);
-  const truckProfile=!Number.isNaN(truckIdx)?db.truckProfiles[truckIdx]:null;
-  const maintLocation=!Number.isNaN(locIdx)?db.maintenanceLocations[locIdx]:null;
-  const metrics=computeMaintMetrics(rec,truckProfile,maintLocation);
-  Object.assign(rec,metrics);
+    const truckIdx=Number(truck);
+    const locIdx=Number(location);
+    const truckProfile=!Number.isNaN(truckIdx)?db.truckProfiles[truckIdx]:null;
+    const maintLocation=!Number.isNaN(locIdx)?db.maintenanceLocations[locIdx]:null;
+    const metrics=computeMaintMetrics(rec,truckProfile,maintLocation);
+    Object.assign(rec,metrics);
 
-  if(!db.maintenanceRecords) db.maintenanceRecords=[];
-  db.maintenanceRecords.push(rec);
+    if(!db.maintenanceRecords) db.maintenanceRecords=[];
+    db.maintenanceRecords.push(rec);
 
-  if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
+    if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
 
-  // Sync maintenance record to SP BEFORE generating auto-CA (so ca.source captures stable SP item id)
-  const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
-  await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
+    // Sync maintenance record to SP BEFORE generating auto-CA (so ca.source captures stable SP item id)
+    const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
+    await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
 
-  if(issueCategory.includes("Defect")||issueCategory.includes("Unscheduled")){
-    if(!db.correctiveActions) db.correctiveActions=[];
-    const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:rec.id,company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
-    db.correctiveActions.push(ca);
-    // Persist auto-CA to SP (rec.id now contains stable SP item id from syncCreateToSP above)
-    const caFields = {
-      Title: ca.action || ca.reference || "Maintenance CA",
-      Status: ca.status || 'Open',
-      "Source_x0020_Type": ca.sourceType || '',
-      "Triggered_x0020_By": ca.source || '',
-      "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
-      Priority: ca.priority || 'Medium',
-      "Assigned_x0020_To": ca.assigned || '',
-      Description: ca.action || '',
-      Company: ca.company || ''
-    };
-    await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, caFields);
+    if(issueCategory.includes("Defect")||issueCategory.includes("Unscheduled")){
+      if(!db.correctiveActions) db.correctiveActions=[];
+      const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:rec.id,company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
+      db.correctiveActions.push(ca);
+      // Persist auto-CA to SP (rec.id now contains stable SP item id from syncCreateToSP above)
+      const caFields = {
+        Title: ca.action || ca.reference || "Maintenance CA",
+        Status: ca.status || 'Open',
+        "Source_x0020_Type": ca.sourceType || '',
+        "Triggered_x0020_By": ca.source || '',
+        "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
+        Priority: ca.priority || 'Medium',
+        "Assigned_x0020_To": ca.assigned || '',
+        Description: ca.action || '',
+        Company: ca.company || ''
+      };
+      await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, caFields);
+    }
+
+    clearMaintRecordEditor();
+    rebuildAll();
+  } catch(e){
+    console.error(e);
   }
-
-  clearMaintRecordEditor();
-  rebuildAll();
 }
 
-async function editMaintRecord(index){
-  const rec=db.maintenanceRecords[index];
-  if(!rec){alert("Record not found.");return;}
-  byId("maint_edit_index").value=index;
-  byId("maint_edit_truck").value=rec.truck||"";
-  byId("maint_edit_assignedTo").value=rec.assignedTo||"";
-  byId("maint_edit_location").value=rec.location||"";
-  byId("maint_edit_type").value=rec.type||"";
-  byId("maint_edit_linkedIncident").value=rec.linkedIncident||"";
-  byId("maint_edit_issueCategory").value=rec.issueCategory||"";
-  byId("maint_edit_description").value=rec.description||"";
-  byId("maint_edit_downtimeStart").value=rec.downtimeStart||"";
-  byId("maint_edit_downtimeEnd").value=rec.downtimeEnd||"";
-  byId("maint_edit_repairStart").value=rec.repairStart||"";
-  byId("maint_edit_repairEnd").value=rec.repairEnd||"";
-  byId("maint_edit_partsOrdered").value=rec.partsOrdered||"";
-  byId("maint_edit_partsArrived").value=rec.partsArrived||"";
-  byId("maint_edit_invoiceNumber").value=rec.invoiceNumber||"";
-  byId("maint_edit_invoiceDate").value=rec.invoiceDate||"";
-  byId("maint_edit_invoicePartsCost").value=rec.invoicePartsCost||0;
-  byId("maint_edit_invoiceLabourCost").value=rec.invoiceLabourCost||0;
-  byId("maint_edit_coolant").value=rec.coolant||0;
-  byId("maint_edit_hydraulicOil").value=rec.hydraulicOil||0;
-  byId("maint_edit_motorOil").value=rec.motorOil||0;
-  byId("maintRecordEditorCard").style.display="block";
+function editMaintRecord(id){
+  const card = document.getElementById('maintRecordCard');
+  if(isCardDirty('maintRecordCard')){
+    _pendingEditCallback = () => _doEditMaintRecord(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditMaintRecord(id);
+}
+function _doEditMaintRecord(id){
+  const card = document.getElementById('maintRecordCard');
+  let record = null;
+  if(typeof id === 'number'){
+    record = db.maintenanceRecords[id];
+  } else {
+    record = db.maintenanceRecords.find(x => x.id === id || x.guid === id);
+  }
+  if(!record){alert("Record not found.");return;}
+  byId("maint_truck").value=record.truck||"";
+  byId("maint_assignedTo").value=record.assignedTo||"";
+  byId("maint_location").value=record.location||"";
+  byId("maint_type").value=record.type||"";
+  byId("maint_linkedIncident").value=record.linkedIncident||"";
+  byId("maint_issueCategory").value=record.issueCategory||"";
+  byId("maint_description").value=record.description||"";
+  byId("maint_downtimeStart").value=record.downtimeStart||"";
+  byId("maint_downtimeEnd").value=record.downtimeEnd||"";
+  byId("maint_repairStart").value=record.repairStart||"";
+  byId("maint_repairEnd").value=record.repairEnd||"";
+  byId("maint_partsOrdered").value=record.partsOrdered||"";
+  byId("maint_partsArrived").value=record.partsArrived||"";
+  byId("maint_invoiceNumber").value=record.invoiceNumber||"";
+  byId("maint_invoiceDate").value=record.invoiceDate||"";
+  byId("maint_invoicePartsCost").value=record.invoicePartsCost||0;
+  byId("maint_invoiceLabourCost").value=record.invoiceLabourCost||0;
+  byId("maint_coolant").value=record.coolant||0;
+  byId("maint_hydraulicOil").value=record.hydraulicOil||0;
+  byId("maint_motorOil").value=record.motorOil||0;
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.maintenanceRecords.indexOf(record);
+  document.getElementById('maintRecordCardTitle').textContent = 'Edit Maintenance Record';
+  document.getElementById('maintRecordCardSubtitle').textContent = record.truck || record.assignedTo || '';
+  document.getElementById('maintRecordSaveBtn').textContent = 'Save Changes';
+  snapshotCard('maintRecordCard');
 }
 
 async function saveEditedMaintRecord(){
-  const index=Number(byId("maint_edit_index").value);
-  if(Number.isNaN(index)||!db.maintenanceRecords[index]){alert("Select a record first.");return;}
-  const oldState = JSON.parse(JSON.stringify(db.maintenanceRecords[index]));
-  const rec=db.maintenanceRecords[index];
-  rec.truck=byId("maint_edit_truck").value||"";
-  rec.assignedTo=byId("maint_edit_assignedTo").value||"";
-  rec.location=byId("maint_edit_location").value||"";
-  rec.type=byId("maint_edit_type").value||"";
-  rec.linkedIncident=byId("maint_edit_linkedIncident").value||"";
-  rec.issueCategory=byId("maint_edit_issueCategory").value||"";
-  rec.description=byId("maint_edit_description").value||"";
-  rec.downtimeStart=byId("maint_edit_downtimeStart").value||"";
-  rec.downtimeEnd=byId("maint_edit_downtimeEnd").value||"";
-  rec.repairStart=byId("maint_edit_repairStart").value||"";
-  rec.repairEnd=byId("maint_edit_repairEnd").value||"";
-  rec.partsOrdered=byId("maint_edit_partsOrdered").value||"";
-  rec.partsArrived=byId("maint_edit_partsArrived").value||"";
-  rec.invoiceNumber=byId("maint_edit_invoiceNumber").value||"";
-  rec.invoiceDate=byId("maint_edit_invoiceDate").value||"";
-  rec.invoicePartsCost=Number(byId("maint_edit_invoicePartsCost").value)||0;
-  rec.invoiceLabourCost=Number(byId("maint_edit_invoiceLabourCost").value)||0;
-  rec.coolant=Number(byId("maint_edit_coolant").value)||0;
-  rec.hydraulicOil=Number(byId("maint_edit_hydraulicOil").value)||0;
-  rec.motorOil=Number(byId("maint_edit_motorOil").value)||0;
-
-  const truckIdx=Number(rec.truck);
-  const locIdx=Number(rec.location);
-  const truckProfile=!Number.isNaN(truckIdx)?db.truckProfiles[truckIdx]:null;
-  const maintLocation=!Number.isNaN(locIdx)?db.maintenanceLocations[locIdx]:null;
-  const metrics=computeMaintMetrics(rec,truckProfile,maintLocation);
-  Object.assign(rec,metrics);
-
-  persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_maintenanceRecords){
-    showToast("Read-only mode. Changes saved locally only.", "info");
-    clearMaintRecordEditor();
-    rebuildAll();
-    return;
-  }
   try {
+    const card = document.getElementById('maintRecordCard');
+    const mode = card.dataset.mode || 'add';
+    const editId = card.dataset.editId || '';
+    let index = -1;
+    if(mode === 'edit'){
+      if(editId === '') { alert("Select a record first."); return; }
+      if(typeof editId === 'string'){
+        if(editId.match(/^\d+$/)){
+          index = Number(editId);
+        } else {
+          index = db.maintenanceRecords.findIndex(x => x.id === editId || x.guid === editId);
+        }
+      }
+      if(index < 0 || !db.maintenanceRecords[index]){ alert("Select a record first."); return; }
+    }
+    if(mode === 'add'){
+      const truck=byId("maint_truck").value||"";
+      const assignedTo=byId("maint_assignedTo").value||"";
+      const location=byId("maint_location").value||"";
+      const type=byId("maint_type").value||"";
+      const linkedIncident=byId("maint_linkedIncident").value||"";
+      const issueCategory=byId("maint_issueCategory").value||"";
+      const description=byId("maint_description").value||"";
+      const downtimeStart=byId("maint_downtimeStart").value||"";
+      const downtimeEnd=byId("maint_downtimeEnd").value||"";
+      const repairStart=byId("maint_repairStart").value||"";
+      const repairEnd=byId("maint_repairEnd").value||"";
+      const partsOrdered=byId("maint_partsOrdered").value||"";
+      const partsArrived=byId("maint_partsArrived").value||"";
+      const invoiceNumber=byId("maint_invoiceNumber").value||"";
+      const invoiceDate=byId("maint_invoiceDate").value||"";
+      const invoicePartsCost=Number(byId("maint_invoicePartsCost").value)||0;
+      const invoiceLabourCost=Number(byId("maint_invoiceLabourCost").value)||0;
+      const coolant=Number(byId("maint_coolant").value)||0;
+      const hydraulicOil=Number(byId("maint_hydraulicOil").value)||0;
+      const motorOil=Number(byId("maint_motorOil").value)||0;
+      const uploads=[];
+      const rec={id:"maint_"+Date.now(),truck,assignedTo,location,type,linkedIncident,issueCategory,description,downtimeStart,downtimeEnd,repairStart,repairEnd,partsOrdered,partsArrived,invoiceNumber,invoiceDate,invoicePartsCost,invoiceLabourCost,coolant,hydraulicOil,motorOil,uploads};
+      if(!db.maintenanceRecords) db.maintenanceRecords=[];
+      db.maintenanceRecords.push(rec);
+      if(!rec.company) rec.company = selectedCompany()==="All Companies" ? "" : selectedCompany();
+      const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
+      await syncCreateToSP("maintenanceRecords", "write_enabled_maintenanceRecords", rec, fields);
+      if(issueCategory.includes("Defect")||issueCategory.includes("Unscheduled")){
+        if(!db.correctiveActions) db.correctiveActions=[];
+        const ca={id:"ca_"+Date.now(),sourceType:"Maintenance",reference:invoiceNumber||"Maint-"+rec.id,action:description||type,assigned:assignedTo,priority:"Medium",status:"Open",source:rec.id,company:selectedCompany(),createdDate:new Date().toISOString().split("T")[0]};
+        db.correctiveActions.push(ca);
+        const caFields = {
+          Title: ca.action || ca.reference || "Maintenance CA",
+          Status: ca.status || 'Open',
+          "Source_x0020_Type": ca.sourceType || '',
+          "Triggered_x0020_By": ca.source || '',
+          "Related_x0020_Incident_x002f_Inspection": ca.reference || '',
+          Priority: ca.priority || 'Medium',
+          "Assigned_x0020_To": ca.assigned || '',
+          Description: ca.action || '',
+          Company: ca.company || ''
+        };
+        await syncCreateToSP('correctiveActions', 'write_enabled_correctiveActions', ca, caFields);
+      }
+      clearMaintRecordEditor(); rebuildAll();
+      return;
+    }
+    const oldState = JSON.parse(JSON.stringify(db.maintenanceRecords[index]));
+    const rec=db.maintenanceRecords[index];
+    rec.truck=byId("maint_truck").value||"";
+    rec.assignedTo=byId("maint_assignedTo").value||"";
+    rec.location=byId("maint_location").value||"";
+    rec.type=byId("maint_type").value||"";
+    rec.linkedIncident=byId("maint_linkedIncident").value||"";
+    rec.issueCategory=byId("maint_issueCategory").value||"";
+    rec.description=byId("maint_description").value||"";
+    rec.downtimeStart=byId("maint_downtimeStart").value||"";
+    rec.downtimeEnd=byId("maint_downtimeEnd").value||"";
+    rec.repairStart=byId("maint_repairStart").value||"";
+    rec.repairEnd=byId("maint_repairEnd").value||"";
+    rec.partsOrdered=byId("maint_partsOrdered").value||"";
+    rec.partsArrived=byId("maint_partsArrived").value||"";
+    rec.invoiceNumber=byId("maint_invoiceNumber").value||"";
+    rec.invoiceDate=byId("maint_invoiceDate").value||"";
+    rec.invoicePartsCost=Number(byId("maint_invoicePartsCost").value)||0;
+    rec.invoiceLabourCost=Number(byId("maint_invoiceLabourCost").value)||0;
+    rec.coolant=Number(byId("maint_coolant").value)||0;
+    rec.hydraulicOil=Number(byId("maint_hydraulicOil").value)||0;
+    rec.motorOil=Number(byId("maint_motorOil").value)||0;
+
+    const truckIdx=Number(rec.truck);
+    const locIdx=Number(rec.location);
+    const truckProfile=!Number.isNaN(truckIdx)?db.truckProfiles[truckIdx]:null;
+    const maintLocation=!Number.isNaN(locIdx)?db.maintenanceLocations[locIdx]:null;
+    const metrics=computeMaintMetrics(rec,truckProfile,maintLocation);
+    Object.assign(rec,metrics);
+
+    persistLocalSnapshot();
+    if(!FEATURE_FLAGS.write_enabled_maintenanceRecords){
+      showToast("Read-only mode. Changes saved locally only.", "info");
+      clearMaintRecordEditor();
+      rebuildAll();
+      return;
+    }
     const fields = {Title: rec.truck || "Maintenance", Company: rec.company, "Truck_x0020_ID": rec.truck, AssignedTo: rec.assignedTo, Location: rec.location, Type: rec.type, LinkedIncident: rec.linkedIncident, IssueCategory: rec.issueCategory, Description: rec.description, DowntimeStart: rec.downtimeStart, DowntimeEnd: rec.downtimeEnd, RepairStart: rec.repairStart, RepairEnd: rec.repairEnd, PartsOrdered: rec.partsOrdered, PartsArrived: rec.partsArrived, InvoiceNumber: rec.invoiceNumber, InvoiceDate: rec.invoiceDate, InvoicePartsCost: Number(rec.invoicePartsCost) || 0, InvoiceLabourCost: Number(rec.invoiceLabourCost) || 0, Coolant: rec.coolant, HydraulicOil: rec.hydraulicOil, MotorOil: rec.motorOil};
     if(!rec.id){
       const result = await graphCreateItem("maintenanceRecords", fields);
@@ -4259,60 +4319,22 @@ async function saveEditedMaintRecord(){
     }
     logAuditEntry({user: "current_user", list: "maintenanceRecords", itemId: rec.id, action: "UPDATE", delta: fields});
     showToast("✓ Saved to SharePoint", "success");
+    clearMaintRecordEditor();
+    rebuildAll();
   } catch(err){
-    console.error("Write error:", err);
-    db.maintenanceRecords[index] = oldState;
-    showToast(`Sync failed: ${err.message || err.code}`, "error");
+    console.error(err);
   }
-  clearMaintRecordEditor();
-  rebuildAll();
 }
 
 function clearMaintRecordEditor(){
-  byId("maint_truck").value="";
-  byId("maint_assignedTo").value="";
-  byId("maint_location").value="";
-  byId("maint_type").value="";
-  byId("maint_linkedIncident").value="";
-  byId("maint_issueCategory").value="";
-  byId("maint_description").value="";
-  byId("maint_downtimeStart").value="";
-  byId("maint_downtimeEnd").value="";
-  byId("maint_repairStart").value="";
-  byId("maint_repairEnd").value="";
-  byId("maint_partsOrdered").value="";
-  byId("maint_partsArrived").value="";
-  byId("maint_invoiceNumber").value="";
-  byId("maint_invoiceDate").value="";
-  byId("maint_invoicePartsCost").value="";
-  byId("maint_invoiceLabourCost").value="";
-  byId("maint_coolant").value="";
-  byId("maint_hydraulicOil").value="";
-  byId("maint_motorOil").value="";
-  byId("maint_uploads").value="";
-  byId("maint_edit_index").value="";
-  byId("maint_edit_truck").value="";
-  byId("maint_edit_assignedTo").value="";
-  byId("maint_edit_location").value="";
-  byId("maint_edit_type").value="";
-  byId("maint_edit_linkedIncident").value="";
-  byId("maint_edit_issueCategory").value="";
-  byId("maint_edit_description").value="";
-  byId("maint_edit_downtimeStart").value="";
-  byId("maint_edit_downtimeEnd").value="";
-  byId("maint_edit_repairStart").value="";
-  byId("maint_edit_repairEnd").value="";
-  byId("maint_edit_partsOrdered").value="";
-  byId("maint_edit_partsArrived").value="";
-  byId("maint_edit_invoiceNumber").value="";
-  byId("maint_edit_invoiceDate").value="";
-  byId("maint_edit_invoicePartsCost").value="";
-  byId("maint_edit_invoiceLabourCost").value="";
-  byId("maint_edit_coolant").value="";
-  byId("maint_edit_hydraulicOil").value="";
-  byId("maint_edit_motorOil").value="";
-  byId("maint_edit_uploads").value="";
-  byId("maintRecordEditorCard").style.display="none";
+  const card = document.getElementById('maintRecordCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('maintRecordCardTitle').textContent = 'Add Maintenance Record';
+  document.getElementById('maintRecordCardSubtitle').textContent = 'Enter maintenance information for the selected truck.';
+  document.getElementById('maintRecordSaveBtn').textContent = 'Add';
+  ["maint_truck","maint_assignedTo","maint_location","maint_type","maint_linkedIncident","maint_issueCategory","maint_description","maint_downtimeStart","maint_downtimeEnd","maint_repairStart","maint_repairEnd","maint_partsOrdered","maint_partsArrived","maint_invoiceNumber","maint_invoiceDate","maint_invoicePartsCost","maint_invoiceLabourCost","maint_coolant","maint_hydraulicOil","maint_motorOil","maint_uploads"].forEach(id => byId(id).value = "");
+  clearSnapshot('maintRecordCard');
 }
 
 function renderMaintRecords(){
@@ -4322,7 +4344,7 @@ function renderMaintRecords(){
     const truck=Number(x.truck),loc=Number(x.location);
     const truckUnit=!Number.isNaN(truck)&&db.truckProfiles[truck]?db.truckProfiles[truck].unit:"";
     const locName=!Number.isNaN(loc)&&db.maintenanceLocations[loc]?db.maintenanceLocations[loc].name:"";
-    return[esc(truckUnit),esc(x.assignedTo),esc(locName),esc(x.type),esc(x.invoiceNumber),esc(x.downtimeHours||""),esc(x.repairHours||""),esc("$"+((x.totalMaintenanceCost||0).toFixed(2))),`<button class="btn secondary" onclick="editMaintRecord(${i})">Edit</button>`];
+    return[esc(truckUnit),esc(x.assignedTo),esc(locName),esc(x.type),esc(x.invoiceNumber),esc(x.downtimeHours||""),esc(x.repairHours||""),esc("$"+((x.totalMaintenanceCost||0).toFixed(2))),`<button class="btn secondary" onclick="editMaintRecord('${x.id || x.guid || i}')">Edit</button>`];
   }));
 }
 
@@ -4332,14 +4354,12 @@ function populateMaintRecordDropdowns(){
     db.maintenanceLocations.map((loc,i)=>`<option value="${i}">${esc(loc.name)}</option>`)
   ).join("");
   if(byId("maint_location")) byId("maint_location").innerHTML=locOptions;
-  if(byId("maint_edit_location")) byId("maint_edit_location").innerHTML=locOptions;
 
   const trucks=filterByCompany(db.truckProfiles);
   const truckOptions=['<option value=""></option>'].concat(
     trucks.map((t,i)=>`<option value="${i}">${esc(t.unit)}</option>`)
   ).join("");
   if(byId("maint_truck")) byId("maint_truck").innerHTML=truckOptions;
-  if(byId("maint_edit_truck")) byId("maint_edit_truck").innerHTML=truckOptions;
 
   if(!db.incidents) db.incidents=[];
   const incidents=filterByCompany(db.incidents);
@@ -4347,7 +4367,6 @@ function populateMaintRecordDropdowns(){
     incidents.map((inc,i)=>`<option value="${i}">${esc(inc.incidentNumber||"Unknown")}</option>`)
   ).join("");
   if(byId("maint_linkedIncident")) byId("maint_linkedIncident").innerHTML=incidentOptions;
-  if(byId("maint_edit_linkedIncident")) byId("maint_edit_linkedIncident").innerHTML=incidentOptions;
 }
 
 function populateToolboxDocumentDropdowns(){
