@@ -289,8 +289,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
 <section id="training" class="page">
-      <div class="card">
-        <h3>Completed Training Record</h3>
+      <div class="card" id="trainingCard" data-mode="add">
+        <h3 id="trainingCardTitle">Add Completed Training</h3>
+        <div class="small" id="trainingCardSubtitle"></div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="training_company" readonly></div>
           <div class="field"><label>Employee Name</label><select id="training_employee" class="people-select"></select></div>
@@ -303,30 +304,11 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Document Name / Description</label><input id="training_doc_name"></div>
           <div class="field"><label>Added By</label><input id="training_doc_by"></div>
           <div class="field"><label>Date Added</label><input id="training_doc_date" type="date"></div>
-          <div class="field span-4"><label>Certificate Upload</label><input id="training_cert_files" type="file" multiple onchange="showSelectedTrainingCerts('training_cert_files','training_cert_preview')"><div id="training_cert_preview" class="file-preview">No certificates selected.</div></div>
-        </div>
-        <div class="footer-note"><button class="btn" onclick="addTraining()">Add Completed Training</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Training Record</h3>
-        <div class="small">Click Edit on a training row, then update the record here.</div>
-        <input id="training_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Employee Name</label><select id="training_edit_employee" class="people-select"></select></div>
-          <div class="field"><label>Course</label><input id="training_edit_course"></div>
-          <div class="field"><label>Status</label><select id="training_edit_status"><option>Valid</option><option>Expiring</option><option>Expired</option><option>Missing</option></select></div>
-          <div class="field"><label>Completion Date</label><input id="training_edit_complete" type="date"></div>
-          <div class="field"><label>Expiry Date</label><input id="training_edit_expiry" type="date"></div>
-          <div class="field span-2"><label>Notes</label><input id="training_edit_notes"></div>
-          <div class="field"><label>Supporting Document Present?</label><select id="training_edit_doc_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field"><label>Document Name / Description</label><input id="training_edit_doc_name"></div>
-          <div class="field"><label>Added By</label><input id="training_edit_doc_by"></div>
-          <div class="field"><label>Date Added</label><input id="training_edit_doc_date" type="date"></div>
-          <div class="field span-4"><label>Certificate Upload</label><input id="training_edit_cert_files" type="file" multiple onchange="showSelectedTrainingCerts('training_edit_cert_files','training_edit_cert_preview')"><div id="training_edit_cert_preview" class="file-preview">No certificates selected.</div><div id="training_existing_certs" class="attachment-list"></div></div>
+          <div class="field span-4"><label>Certificate Upload</label><input id="training_cert_files" type="file" multiple onchange="showSelectedTrainingCerts('training_cert_files','training_cert_preview')"><div id="training_cert_preview" class="file-preview">No certificates selected.</div><div id="training_existing_certs" class="attachment-list"></div></div>
         </div>
         <div class="footer-note">
-          <button class="btn" onclick="saveEditedTraining()">Save Changes</button>
-          <button class="btn secondary" onclick="clearTrainingEditor()">Clear</button>
+          <button class="btn" id="trainingSaveBtn" onclick="saveEditedTraining()">Add Completed Training</button>
+          <button class="btn secondary" onclick="clearTrainingEditor()">New / Clear</button>
         </div>
       </div>
       <div class="card"><h3>Completed Training Table</h3><div class="table-wrap"><table id="trainingTable"></table></div></div>
@@ -2927,7 +2909,7 @@ function getPeopleOptions(includeBlank=true){
 function populateEmployeeLinkedDropdowns(){
   const optionHtml = getPeopleOptions(true);
   const ids = [
-    "training_employee","training_edit_employee",
+    "training_employee",
     "incident_employee","incident_edit_employee",
     "committee_name","committee_edit_name",
     "toolbox_presenter","toolbox_edit_presenter","vehicle_reported_by","vehicle_edit_reported_by",
@@ -4909,93 +4891,152 @@ async function saveEditedPerson(){
   }
 }
 
-function editTraining(index){
-  const rows = filterByCompany(db.training);
-  const rec = rows[index];
+function editTraining(id){
+  const card = document.getElementById('trainingCard');
+  if(isCardDirty('trainingCard')){
+    _pendingEditCallback = () => _doEditTraining(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditTraining(id);
+}
+function _doEditTraining(id){
+  const card = document.getElementById('trainingCard');
+  const training = filterByCompany(db.training);
+  let rec = null;
+  if(typeof id === 'number'){
+    rec = training[id];
+  } else {
+    rec = db.training.find(t => t.id === id || t.guid === id);
+  }
   if(!rec) return;
-  const actualIndex = db.training.findIndex(x => x === rec);
-  byId("training_edit_index").value = actualIndex;
-  byId("training_edit_employee").value = rec.employee || "";
-  byId("training_edit_course").value = rec.course || "";
-  byId("training_edit_status").value = rec.status || "Valid";
-  byId("training_edit_complete").value = rec.complete || "";
-  byId("training_edit_expiry").value = rec.expiry || "";
-  byId("training_edit_notes").value = rec.notes || "";
-  byId("training_edit_doc_present").value = rec.documentPresent || "No";
-  byId("training_edit_doc_name").value = rec.documentName || "";
-  byId("training_edit_doc_by").value = rec.addedBy || "";
-  byId("training_edit_doc_date").value = rec.dateAdded || "";
+  byId("training_employee").value = rec.employee || "";
+  byId("training_course").value = rec.course || "";
+  byId("training_status").value = rec.status || "Valid";
+  byId("training_complete").value = rec.complete || "";
+  byId("training_expiry").value = rec.expiry || "";
+  byId("training_notes").value = rec.notes || "";
+  byId("training_doc_present").value = rec.documentPresent || "No";
+  byId("training_doc_name").value = rec.documentName || "";
+  byId("training_doc_by").value = rec.addedBy || "";
+  byId("training_doc_date").value = rec.dateAdded || "";
   byId("training_existing_certs").innerHTML = renderTrainingCertLinks(rec.certificates || []);
+  card.dataset.mode = 'edit';
+  card.dataset.editId = rec.id || rec.guid || db.training.indexOf(rec);
+  document.getElementById('trainingCardTitle').textContent = 'Edit Training';
+  document.getElementById('trainingCardSubtitle').textContent = rec.employee || '';
+  document.getElementById('trainingSaveBtn').textContent = 'Save Changes';
+  snapshotCard('trainingCard');
 }
 function clearTrainingEditor(){
-  byId("training_edit_index").value = "";
-  byId("training_edit_employee").value = "";
-  byId("training_edit_course").value = "";
-  byId("training_edit_status").value = "Valid";
-  byId("training_edit_complete").value = "";
-  byId("training_edit_expiry").value = "";
-  byId("training_edit_notes").value = "";
-  byId("training_edit_doc_present").value = "No";
-  byId("training_edit_doc_name").value = "";
-  byId("training_edit_doc_by").value = "";
-  byId("training_edit_doc_date").value = "";
-  clearTrainingCertPicker("training_edit_cert_files","training_edit_cert_preview");
+  const card = document.getElementById('trainingCard');
+  byId("training_employee").value = "";
+  byId("training_course").value = "";
+  byId("training_status").value = "Valid";
+  byId("training_complete").value = "";
+  byId("training_expiry").value = "";
+  byId("training_notes").value = "";
+  byId("training_doc_present").value = "No";
+  byId("training_doc_name").value = "";
+  byId("training_doc_by").value = "";
+  byId("training_doc_date").value = "";
+  clearTrainingCertPicker("training_cert_files","training_cert_preview");
   byId("training_existing_certs").innerHTML = "";
+  card.dataset.mode = 'add';
+  delete card.dataset.editId;
+  document.getElementById('trainingCardTitle').textContent = 'Add Completed Training';
+  document.getElementById('trainingCardSubtitle').textContent = '';
+  document.getElementById('trainingSaveBtn').textContent = 'Add Completed Training';
+  snapshotCard('trainingCard');
 }
 
 async function saveEditedTraining(){
   try{
-    const index = Number((byId("training_edit_index")||{}).value);
-    if(Number.isNaN(index) || !db.training[index]){
-      alert("Select a training row first.");
-      return;
-    }
-    const existing = db.training[index].certificates || [];
-    const added = [];
-    for(const file of Array.from((byId("training_edit_cert_files")||{}).files || [])){
-      added.push(await storeTrainingCertificate(file));
-    }
-    const oldState = JSON.parse(JSON.stringify(db.training[index]));
-    db.training[index] = {
-      ...db.training[index],
-      employee: ((byId("training_edit_employee")||{}).value||"").trim(),
-      course: ((byId("training_edit_course")||{}).value||"").trim(),
-      status: (byId("training_edit_status")||{}).value,
-      complete: (byId("training_edit_complete")||{}).value,
-      expiry: (byId("training_edit_expiry")||{}).value,
-      notes: (byId("training_edit_notes")||{}).value,
-      documentPresent: (byId("training_edit_doc_present")||{}).value,
-      documentName: ((byId("training_edit_doc_name")||{}).value||"").trim(),
-      addedBy: ((byId("training_edit_doc_by")||{}).value||"").trim(),
-      dateAdded: (byId("training_edit_doc_date")||{}).value,
-      certificates: [...existing, ...added]
-    };
-    persistLocalSnapshot();
-    if(!FEATURE_FLAGS.write_enabled_training){
-      showToast("Read-only mode. Changes saved locally only.", "info");
+    const card = document.getElementById('trainingCard');
+    const mode = card.dataset.mode || 'add';
+    if(mode === 'add'){
+      const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+      const certs = [];
+      for(const file of Array.from((byId("training_cert_files")||{}).files || [])){
+        certs.push(await storeTrainingCertificate(file));
+      }
+      if(!db.training) db.training=[];
+      const entity = {
+        company,
+        employee:((byId("training_employee")||{}).value||"").trim(),
+        course:((byId("training_course")||{}).value||"").trim(),
+        status:(byId("training_status")||{}).value,
+        complete:(byId("training_complete")||{}).value,
+        expiry:(byId("training_expiry")||{}).value,
+        notes:(byId("training_notes")||{}).value,
+        documentPresent:(byId("training_doc_present")||{}).value,
+        documentName:((byId("training_doc_name")||{}).value||"").trim(),
+        addedBy:((byId("training_doc_by")||{}).value||"").trim(),
+        dateAdded:(byId("training_doc_date")||{}).value,
+        certificates: certs
+      };
+      db.training.push(entity);
+      clearTrainingCertPicker("training_cert_files","training_cert_preview");
+      saveDB(); renderAll();
+      const fields = {Title: entity.employee || "Training", Company: entity.company, Employee: entity.employee, Course: entity.course, "Completion_x0020_Date": entity.complete, "Expiry_x0020_Date": entity.expiry, Notes: entity.notes, Status: entity.status, DocumentPresent: entity.documentPresent, DocumentName: entity.documentName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+      await syncCreateToSP("training", "write_enabled_training", entity, fields);
+    } else {
+      const editId = card.dataset.editId;
+      let index = Number(editId);
+      if(Number.isNaN(index)){
+        index = db.training.findIndex(t => t.id === editId || t.guid === editId);
+      }
+      if(Number.isNaN(index) || !db.training[index]){
+        alert("Select a training row first.");
+        return;
+      }
+      const existing = db.training[index].certificates || [];
+      const added = [];
+      for(const file of Array.from((byId("training_cert_files")||{}).files || [])){
+        added.push(await storeTrainingCertificate(file));
+      }
+      const oldState = JSON.parse(JSON.stringify(db.training[index]));
+      db.training[index] = {
+        ...db.training[index],
+        employee: ((byId("training_employee")||{}).value||"").trim(),
+        course: ((byId("training_course")||{}).value||"").trim(),
+        status: (byId("training_status")||{}).value,
+        complete: (byId("training_complete")||{}).value,
+        expiry: (byId("training_expiry")||{}).value,
+        notes: (byId("training_notes")||{}).value,
+        documentPresent: (byId("training_doc_present")||{}).value,
+        documentName: ((byId("training_doc_name")||{}).value||"").trim(),
+        addedBy: ((byId("training_doc_by")||{}).value||"").trim(),
+        dateAdded: (byId("training_doc_date")||{}).value,
+        certificates: [...existing, ...added]
+      };
+      persistLocalSnapshot();
+      if(!FEATURE_FLAGS.write_enabled_training){
+        showToast("Read-only mode. Changes saved locally only.", "info");
+        clearTrainingEditor();
+        rebuildAll();
+        return;
+      }
+      try {
+        const training = db.training[index];
+        const fields = {Title: training.employee || "Training", Company: training.company, Employee: training.employee, Course: training.course, "Completion_x0020_Date": training.complete, "Expiry_x0020_Date": training.expiry, Notes: training.notes, Status: training.status, DocumentPresent: training.documentPresent, DocumentName: training.documentName, AddedBy: training.addedBy, DateAdded: training.dateAdded};
+        if(!training.id){
+          const result = await graphCreateItem("training", fields);
+          training.id = result.id;
+          training.etag = result.etag;
+        } else {
+          await graphUpdateItem("training", training.id, fields, training.etag);
+        }
+        logAuditEntry({user: "current_user", list: "training", itemId: training.id, action: "UPDATE", delta: fields});
+        showToast("✓ Saved to SharePoint", "success");
+      } catch(err){
+        console.error("Write error:", err);
+        db.training[index] = oldState;
+        showToast(`Sync failed: ${err.message || err.code}`, "error");
+      }
       clearTrainingEditor();
       rebuildAll();
-      return;
     }
-    try {
-      const training = db.training[index];
-      const fields = {Title: training.employee || "Training", Company: training.company, Employee: training.employee, Course: training.course, "Completion_x0020_Date": training.complete, "Expiry_x0020_Date": training.expiry, Notes: training.notes, Status: training.status, DocumentPresent: training.documentPresent, DocumentName: training.documentName, AddedBy: training.addedBy, DateAdded: training.dateAdded};
-      if(!training.id){
-        const result = await graphCreateItem("training", fields);
-        training.id = result.id;
-        training.etag = result.etag;
-      } else {
-        await graphUpdateItem("training", training.id, fields, training.etag);
-      }
-      logAuditEntry({user: "current_user", list: "training", itemId: training.id, action: "UPDATE", delta: fields});
-      showToast("✓ Saved to SharePoint", "success");
-    } catch(err){
-      console.error("Write error:", err);
-      db.training[index] = oldState;
-      showToast(`Sync failed: ${err.message || err.code}`, "error");
-    }
-    clearTrainingEditor();
-    rebuildAll();
   } catch(e){ console.error("saveEditedTraining error:",e); alert("Failed to save training: "+e.message); }
 }
 
@@ -5003,34 +5044,8 @@ function addPerson(){
   clearPersonEditor();
 }
 
-async function addTraining(){
-  try{
-    const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-    const certs = [];
-    for(const file of Array.from((byId("training_cert_files")||{}).files || [])){
-      certs.push(await storeTrainingCertificate(file));
-    }
-    if(!db.training) db.training=[];
-    const entity = {
-      company,
-      employee:((byId("training_employee")||{}).value||"").trim(),
-      course:((byId("training_course")||{}).value||"").trim(),
-      status:(byId("training_status")||{}).value,
-      complete:(byId("training_complete")||{}).value,
-      expiry:(byId("training_expiry")||{}).value,
-      notes:(byId("training_notes")||{}).value,
-      documentPresent:(byId("training_doc_present")||{}).value,
-      documentName:((byId("training_doc_name")||{}).value||"").trim(),
-      addedBy:((byId("training_doc_by")||{}).value||"").trim(),
-      dateAdded:(byId("training_doc_date")||{}).value,
-      certificates: certs
-    };
-    db.training.push(entity);
-    clearTrainingCertPicker("training_cert_files","training_cert_preview");
-    saveDB(); renderAll();
-    const fields = {Title: entity.employee || "Training", Company: entity.company, Employee: entity.employee, Course: entity.course, "Completion_x0020_Date": entity.complete, "Expiry_x0020_Date": entity.expiry, Notes: entity.notes, Status: entity.status, DocumentPresent: entity.documentPresent, DocumentName: entity.documentName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
-    await syncCreateToSP("training", "write_enabled_training", entity, fields);
-  } catch(e){ console.error("addTraining error:",e); alert("Failed to add training: "+e.message); }
+function addTraining(){
+  clearTrainingEditor();
 }
 
 function editDocument(index){
@@ -5842,7 +5857,7 @@ function renderAll(){
   byId("backupCard").innerHTML = `Last export: <strong>${esc(last)}</strong><br>Last import: <strong>${esc(db.state.lastImport||"Never")}</strong><br>${lastDays===null || lastDays>7 ? "<strong>Backup overdue</strong>" : "Backup current within 7 days"}`;
 
   renderTable(byId("peopleTable"), ["Company","Employee","Roles","Department","Status","Edit"], people.map((x,i) => [esc(x.company), esc(x.name), esc((x.roles||[]).join(", ")), esc(x.department), statusPill(x.status), `<button class="btn secondary" onclick="editPerson('${x.id || x.guid || i}')">Edit</button>`]));
-  renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining(${i})">Edit</button>`]));
+  renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingGapTable"), ["Company","Employee","Roles","Required Course","Status","Due / Expiry","Notes"], gaps.map(x => [esc(x.company), esc(x.employee), esc(x.roles), esc(x.course), statusPill(x.status), esc(x.due), esc(x.notes)]));
   renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Edit"], docs.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary" onclick="editDocument(${i})">Edit</button>`]));
   renderArchivedDocuments();
