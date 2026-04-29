@@ -682,26 +682,19 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="maintenance_locations" class="page">
-      <div class="card">
-        <h2>Maintenance Locations</h2>
+      <div class="card" id="maintLocCard" data-mode="add">
+        <h3 id="maintLocCardTitle">Add Maintenance Location</h3>
+        <div class="small" id="maintLocCardSubtitle">Enter location information for the selected company.</div>
         <div class="field-grid">
           <div class="field"><label>Location Name</label><input id="maintLoc_name"></div>
           <div class="field span-2"><label>Address / Notes</label><textarea id="maintLoc_address"></textarea></div>
           <div class="field"><label>Hourly Labour Rate</label><input id="maintLoc_hourlyLabourRate" type="number" step="0.01"></div>
           <div class="field"><label><input id="maintLoc_dealer" type="checkbox"> Dealer Location</label></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addMaintLocation()">Add</button> <button class="btn secondary" onclick="clearMaintLocEditor()">Clear</button></div>
-      </div>
-      <div class="card" id="maintLocEditorCard" style="display:none;">
-        <h3>Edit Maintenance Location</h3>
-        <div class="field-grid">
-          <input id="maintLoc_edit_index" type="hidden">
-          <div class="field"><label>Location Name</label><input id="maintLoc_edit_name"></div>
-          <div class="field span-2"><label>Address / Notes</label><textarea id="maintLoc_edit_address"></textarea></div>
-          <div class="field"><label>Hourly Labour Rate</label><input id="maintLoc_edit_hourlyLabourRate" type="number" step="0.01"></div>
-          <div class="field"><label><input id="maintLoc_edit_dealer" type="checkbox"> Dealer Location</label></div>
+        <div class="footer-note">
+          <button class="btn" id="maintLocSaveBtn" onclick="saveEditedMaintLocation()">Add</button>
+          <button class="btn secondary" onclick="clearMaintLocEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedMaintLocation()">Save Changes</button> <button class="btn secondary" onclick="clearMaintLocEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="maintLocationsTable"></table></div></div>
     </section>
@@ -3988,42 +3981,69 @@ function renderAnalytics(){
   if(byId("analyticsBaselineImprovement")) byId("analyticsBaselineImprovement").innerHTML = baselineText;
 }
 
-async function addMaintLocation(){
-  const company=selectedCompany()==="All Companies" ? "" : selectedCompany();
-  const name=byId("maintLoc_name").value || "";
-  const address=byId("maintLoc_address").value || "";
-  const hourlyLabourRate=Number(byId("maintLoc_hourlyLabourRate").value) || 0;
-  const dealer=byId("maintLoc_dealer").checked;
-  if(!name){alert("Location name is required.");return;}
-  if(!db.maintenanceLocations) db.maintenanceLocations=[];
-  const loc = {company, name, address, hourlyLabourRate, dealer};
-  db.maintenanceLocations.push(loc);
-  clearMaintLocEditor();
-  rebuildAll();
-  const fields = {Title: loc.name, Company: loc.company, "Location_x0020_Name": loc.name, Address: loc.address, HourlyLabourRate: Number(loc.hourlyLabourRate) || 0, Dealer: loc.dealer ? "Yes" : "No"};
-  await syncCreateToSP("maintenanceLocations", "write_enabled_maintenanceLocations", loc, fields);
+function editMaintLocation(id){
+  const card = document.getElementById('maintLocCard');
+  if(isCardDirty('maintLocCard')){
+    _pendingEditCallback = () => _doEditMaintLocation(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditMaintLocation(id);
 }
-
-async function editMaintLocation(index){
-  const loc=db.maintenanceLocations[index];
-  if(!loc){alert("Location not found.");return;}
-  byId("maintLoc_edit_index").value=index;
-  byId("maintLoc_edit_name").value=loc.name||"";
-  byId("maintLoc_edit_address").value=loc.address||"";
-  byId("maintLoc_edit_hourlyLabourRate").value=loc.hourlyLabourRate||0;
-  byId("maintLoc_edit_dealer").checked=loc.dealer||false;
-  byId("maintLocEditorCard").style.display="block";
+function _doEditMaintLocation(id){
+  const card = document.getElementById('maintLocCard');
+  let location = null;
+  if(typeof id === 'number'){
+    location = db.maintenanceLocations[id];
+  } else {
+    location = db.maintenanceLocations.find(x => x.id === id || x.guid === id);
+  }
+  if(!location){alert("Location not found.");return;}
+  byId("maintLoc_name").value=location.name||"";
+  byId("maintLoc_address").value=location.address||"";
+  byId("maintLoc_hourlyLabourRate").value=location.hourlyLabourRate||0;
+  byId("maintLoc_dealer").checked=location.dealer||false;
+  card.dataset.mode = 'edit';
+  card.dataset.editId = location.id || location.guid || db.maintenanceLocations.indexOf(location);
+  document.getElementById('maintLocCardTitle').textContent = 'Edit Maintenance Location';
+  document.getElementById('maintLocCardSubtitle').textContent = location.name || location.address || '';
+  document.getElementById('maintLocSaveBtn').textContent = 'Save Changes';
+  snapshotCard('maintLocCard');
 }
 
 async function saveEditedMaintLocation(){
-  const index=Number(byId("maintLoc_edit_index").value);
-  if(Number.isNaN(index)||!db.maintenanceLocations[index]){alert("Select a location first.");return;}
+  const card = document.getElementById('maintLocCard');
+  const mode = card.dataset.mode || 'add';
+  const editId = card.dataset.editId || '';
+  let index = -1;
+  if(mode === 'edit'){
+    if(editId === '') { alert("Select a location first."); return; }
+    if(typeof editId === 'string'){
+      if(editId.match(/^\d+$/)){
+        index = Number(editId);
+      } else {
+        index = db.maintenanceLocations.findIndex(x => x.id === editId || x.guid === editId);
+      }
+    }
+    if(index < 0 || !db.maintenanceLocations[index]){ alert("Select a location first."); return; }
+  }
+  if(mode === 'add'){
+    const company=selectedCompany()==="All Companies" ? "" : selectedCompany();
+    const loc = {company, name:byId("maintLoc_name").value||"", address:byId("maintLoc_address").value||"", hourlyLabourRate:Number(byId("maintLoc_hourlyLabourRate").value)||0, dealer:byId("maintLoc_dealer").checked};
+    if(!loc.name){alert("Location name is required.");return;}
+    if(!db.maintenanceLocations) db.maintenanceLocations=[];
+    db.maintenanceLocations.push(loc);
+    clearMaintLocEditor(); rebuildAll();
+    const fields = {Title: loc.name, Company: loc.company, "Location_x0020_Name": loc.name, Address: loc.address, HourlyLabourRate: Number(loc.hourlyLabourRate) || 0, Dealer: loc.dealer ? "Yes" : "No"};
+    await syncCreateToSP("maintenanceLocations", "write_enabled_maintenanceLocations", loc, fields);
+    return;
+  }
   const oldState = JSON.parse(JSON.stringify(db.maintenanceLocations[index]));
   const loc=db.maintenanceLocations[index];
-  loc.name=byId("maintLoc_edit_name").value||"";
-  loc.address=byId("maintLoc_edit_address").value||"";
-  loc.hourlyLabourRate=Number(byId("maintLoc_edit_hourlyLabourRate").value)||0;
-  loc.dealer=byId("maintLoc_edit_dealer").checked;
+  loc.name=byId("maintLoc_name").value||"";
+  loc.address=byId("maintLoc_address").value||"";
+  loc.hourlyLabourRate=Number(byId("maintLoc_hourlyLabourRate").value)||0;
+  loc.dealer=byId("maintLoc_dealer").checked;
   persistLocalSnapshot();
   if(!FEATURE_FLAGS.write_enabled_maintenanceLocations){
     showToast("Read-only mode. Changes saved locally only.", "info");
@@ -4052,23 +4072,22 @@ async function saveEditedMaintLocation(){
 }
 
 function clearMaintLocEditor(){
-  byId("maintLoc_name").value="";
-  byId("maintLoc_address").value="";
-  byId("maintLoc_hourlyLabourRate").value="";
+  const card = document.getElementById('maintLocCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('maintLocCardTitle').textContent = 'Add Maintenance Location';
+  document.getElementById('maintLocCardSubtitle').textContent = 'Enter location information for the selected company.';
+  document.getElementById('maintLocSaveBtn').textContent = 'Add';
+  ["maintLoc_name","maintLoc_address","maintLoc_hourlyLabourRate"].forEach(id => byId(id).value = "");
   byId("maintLoc_dealer").checked=false;
-  byId("maintLoc_edit_index").value="";
-  byId("maintLoc_edit_name").value="";
-  byId("maintLoc_edit_address").value="";
-  byId("maintLoc_edit_hourlyLabourRate").value="";
-  byId("maintLoc_edit_dealer").checked=false;
-  byId("maintLocEditorCard").style.display="none";
+  clearSnapshot('maintLocCard');
 }
 
 function renderMaintLocations(){
   if(!db.maintenanceLocations) db.maintenanceLocations=[];
   const locs=db.maintenanceLocations;
   renderTable(byId("maintLocationsTable"),["Name","Address","Hourly Labour Rate","Dealer","Edit"],locs.map((x,i)=>[
-    esc(x.name),esc(x.address),esc(x.hourlyLabourRate),x.dealer?"Yes":"No",`<button class="btn secondary" onclick="editMaintLocation(${i})">Edit</button>`
+    esc(x.name),esc(x.address),esc(x.hourlyLabourRate),x.dealer?"Yes":"No",`<button class="btn secondary" onclick="editMaintLocation('${x.id || x.guid || i}')">Edit</button>`
   ]));
 }
 
