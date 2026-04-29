@@ -589,8 +589,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="committee" class="page">
-      <div class="card">
-        <h3 id="committeeTitle">WHSR / Committee Record</h3>
+      <div class="card" id="committeeCard" data-mode="add">
+        <h3 id="committeeCardTitle">Add WHSR / Committee Record</h3>
+        <div class="small" id="committeeCardSubtitle">Enter committee member information for the selected company.</div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="committee_company" readonly></div>
           <div class="field"><label>Member Name</label><select id="committee_name" class="people-select"></select></div>
@@ -601,26 +602,12 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field span-2"><label>Proof Description</label><input id="committee_proof_desc"></div>
           <div class="field"><label>Added By</label><input id="committee_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="committee_proof_date" type="date"></div>
-          <div class="field span-4"><label>WHSR / Committee Uploads</label><input id="committee_upload_files" type="file" multiple onchange="showSelectedPortalFiles('committee_upload_files','committee_upload_preview')"><div id="committee_upload_preview" class="file-preview">No files selected.</div></div>
+          <div class="field span-4"><label>WHSR / Committee Uploads</label><input id="committee_upload_files" type="file" multiple onchange="showSelectedPortalFiles('committee_upload_files','committee_upload_preview')"><div id="committee_upload_preview" class="file-preview">No files selected.</div><div id="committee_existing_uploads" class="attachment-list"></div></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addCommittee()">Add Record</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected WHSR / Committee Record</h3>
-        <div class="small">Click Edit on a row, then update it here.</div>
-        <input id="committee_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Member Name</label><select id="committee_edit_name" class="people-select"></select></div>
-          <div class="field"><label>Role</label><input id="committee_edit_role"></div>
-          <div class="field"><label>Next Meeting Due</label><input id="committee_edit_due" type="date"></div>
-          <div class="field span-4"><label>Notes</label><textarea id="committee_edit_notes"></textarea></div>
-          <div class="field"><label>Minutes / Proof Present?</label><select id="committee_edit_proof_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field span-2"><label>Proof Description</label><input id="committee_edit_proof_desc"></div>
-          <div class="field"><label>Added By</label><input id="committee_edit_proof_by"></div>
-          <div class="field"><label>Date Added</label><input id="committee_edit_proof_date" type="date"></div>
-          <div class="field span-4"><label>WHSR / Committee Uploads</label><input id="committee_edit_upload_files" type="file" multiple onchange="showSelectedPortalFiles('committee_edit_upload_files','committee_edit_upload_preview')"><div id="committee_edit_upload_preview" class="file-preview">No files selected.</div><div id="committee_existing_uploads" class="attachment-list"></div></div>
+        <div class="footer-note">
+          <button class="btn" id="committeeSaveBtn" onclick="saveEditedCommittee()">Add Record</button>
+          <button class="btn secondary" onclick="clearCommitteeEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedCommittee()">Save Changes</button> <button class="btn secondary" onclick="clearCommitteeEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="committeeTable"></table></div></div>
     </section>
@@ -2768,7 +2755,7 @@ function populateEmployeeLinkedDropdowns(){
   const ids = [
     "training_employee",
     "incident_employee",
-    "committee_name","committee_edit_name",
+    "committee_name",
     "toolbox_presenter","vehicle_reported_by",
     "lift_operator","truck_person"
   ];
@@ -5770,33 +5757,86 @@ async function saveEditedHazard(){
   clearHazardEditor(); rebuildAll();
 }
 
-function editCommittee(index){
-  const rows = filterByCompany(db.committee); const rec = rows[index]; if(!rec) return;
-  const actualIndex = db.committee.findIndex(x => x === rec);
-  byId("committee_edit_index").value = actualIndex;
-  byId("committee_edit_name").value = rec.name || "";
-  byId("committee_edit_role").value = rec.role || "";
-  byId("committee_edit_due").value = rec.due || "";
-  byId("committee_edit_notes").value = rec.notes || "";
-  byId("committee_edit_proof_present").value = rec.proofPresent || "No";
-  byId("committee_edit_proof_desc").value = rec.proofDescription || "";
-  byId("committee_edit_proof_by").value = rec.addedBy || "";
-  byId("committee_edit_proof_date").value = rec.dateAdded || "";
-  byId("committee_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
+function editCommittee(id){
+  const card = document.getElementById('committeeCard');
+  if(isCardDirty('committeeCard')){
+    _pendingEditCallback = () => _doEditCommittee(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditCommittee(id);
+}
+function _doEditCommittee(id){
+  const card = document.getElementById('committeeCard');
+  const rows = filterByCompany(db.committee);
+  let record = null;
+  if(typeof id === 'number'){
+    record = rows[id];
+  } else {
+    record = db.committee.find(x => x.id === id || x.guid === id);
+  }
+  if(!record) return;
+  byId("committee_name").value = record.name || "";
+  byId("committee_role").value = record.role || "";
+  byId("committee_due").value = record.due || "";
+  byId("committee_notes").value = record.notes || "";
+  byId("committee_proof_present").value = record.proofPresent || "No";
+  byId("committee_proof_desc").value = record.proofDescription || "";
+  byId("committee_proof_by").value = record.addedBy || "";
+  byId("committee_proof_date").value = record.dateAdded || "";
+  byId("committee_existing_uploads").innerHTML = renderPortalFileLinks(record.uploads || [], {allowDelete: true});
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.committee.indexOf(record);
+  document.getElementById('committeeCardTitle').textContent = 'Edit WHSR / Committee Record';
+  document.getElementById('committeeCardSubtitle').textContent = record.name || record.role || '';
+  document.getElementById('committeeSaveBtn').textContent = 'Save Changes';
+  snapshotCard('committeeCard');
 }
 function clearCommitteeEditor(){
-  ["committee_edit_index","committee_edit_name","committee_edit_role","committee_edit_due","committee_edit_notes","committee_edit_proof_desc","committee_edit_proof_by","committee_edit_proof_date"].forEach(id => byId(id).value = "");
-  byId("committee_edit_proof_present").value = "No";
-  clearPortalFilePicker("committee_edit_upload_files","committee_edit_upload_preview");
+  const card = document.getElementById('committeeCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('committeeCardTitle').textContent = 'Add WHSR / Committee Record';
+  document.getElementById('committeeCardSubtitle').textContent = 'Enter committee member information for the selected company.';
+  document.getElementById('committeeSaveBtn').textContent = 'Add Record';
+  ["committee_name","committee_role","committee_due","committee_notes","committee_proof_desc","committee_proof_by","committee_proof_date"].forEach(id => byId(id).value = "");
+  byId("committee_proof_present").value = "No";
+  clearPortalFilePicker("committee_upload_files","committee_upload_preview");
   byId("committee_existing_uploads").innerHTML = "";
+  clearSnapshot('committeeCard');
 }
 async function saveEditedCommittee(){
-  const index = Number(byId("committee_edit_index").value); if(Number.isNaN(index) || !db.committee[index]){ alert("Select a WHSR / Committee row first."); return; }
+  const card = document.getElementById('committeeCard');
+  const mode = card.dataset.mode || 'add';
+  const editId = card.dataset.editId || '';
+  let index = -1;
+  if(mode === 'edit'){
+    if(editId === '') { alert("Select a WHSR / Committee row first."); return; }
+    if(typeof editId === 'string'){
+      if(editId.match(/^\d+$/)){
+        index = Number(editId);
+      } else {
+        index = db.committee.findIndex(x => x.id === editId || x.guid === editId);
+      }
+    }
+    if(index < 0 || !db.committee[index]){ alert("Select a WHSR / Committee row first."); return; }
+  }
+  if(mode === 'add'){
+    const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+    const uploads = [];
+    for(const file of Array.from(byId("committee_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
+    const entity = {company, name:byId("committee_name").value.trim(), role:byId("committee_role").value.trim(), due:byId("committee_due").value, notes:byId("committee_notes").value, proofPresent:byId("committee_proof_present").value, proofDescription:byId("committee_proof_desc").value.trim(), addedBy:byId("committee_proof_by").value.trim(), dateAdded:byId("committee_proof_date").value, uploads};
+    db.committee.push(entity);
+    clearPortalFilePicker("committee_upload_files","committee_upload_preview"); saveDB(); renderAll();
+    const fields = {Title: entity.name || "Committee Meeting", Company: entity.company, Role: entity.role, "Next_x0020_Meeting_x0020_Date": entity.due, "Decisions_x002f_Actions": entity.notes, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+    await syncCreateToSP("committee", "write_enabled_committee", entity, fields);
+    return;
+  }
   const oldState = JSON.parse(JSON.stringify(db.committee[index]));
   const existing = db.committee[index].uploads || [];
   const added = [];
-  for(const file of Array.from(byId("committee_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
-  db.committee[index] = {...db.committee[index], name:byId("committee_edit_name").value.trim(), role:byId("committee_edit_role").value.trim(), due:byId("committee_edit_due").value, notes:byId("committee_edit_notes").value, proofPresent:byId("committee_edit_proof_present").value, proofDescription:byId("committee_edit_proof_desc").value.trim(), addedBy:byId("committee_edit_proof_by").value.trim(), dateAdded:byId("committee_edit_proof_date").value, uploads:[...existing, ...added]};
+  for(const file of Array.from(byId("committee_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+  db.committee[index] = {...db.committee[index], name:byId("committee_name").value.trim(), role:byId("committee_role").value.trim(), due:byId("committee_due").value, notes:byId("committee_notes").value, proofPresent:byId("committee_proof_present").value, proofDescription:byId("committee_proof_desc").value.trim(), addedBy:byId("committee_proof_by").value.trim(), dateAdded:byId("committee_proof_date").value, uploads:[...existing, ...added]};
   persistLocalSnapshot();
   if(!FEATURE_FLAGS.write_enabled_committee){
     showToast("Read-only mode. Changes saved locally only.", "info");
@@ -6125,7 +6165,7 @@ function renderAll(){
   renderTable(byId("inspectionTable"), ["Company","Date","Crew","Location","Inspector","Findings","Proof Present","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], inspections.map((x,i) => [esc(x.company), esc(x.date), esc(x.crew), esc(x.location), esc(x.inspector), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editInspection('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("incidentTable"), ["Company","Incident #","Date","Employee","Witnesses","Location","Severity","Immediate Causes","Basic Causes","Issue Tags","Description","Photos","Video","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], incidents.map((x,i) => [esc(x.company), esc(x.incidentNumber || ""), esc(x.date), esc(x.employee), esc((x.witnesses || []).join(", ")), esc(x.location), statusPill(x.severity), esc((Array.isArray(x.immediateCause) ? x.immediateCause : (x.immediateCause ? [x.immediateCause] : [])).join(", ")), esc((Array.isArray(x.basicCause) ? x.basicCause : (x.basicCause ? [x.basicCause] : [])).join(", ")), esc((x.issueTags || []).join(", ")), esc(x.description), statusPill(x.photosPresent), statusPill(x.videoPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editIncident('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("hazardTable"), ["Company","Date","Task","Location","Leader","Hazards","Controls","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], hazard.map((x,i) => [esc(x.company), esc(x.date), esc(x.task), esc(x.location), esc(x.leader), esc(x.hazards), esc(x.controls), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editHazard('${x.id || x.guid || i}')">Edit</button>`]));
-  renderTable(byId("committeeTable"), ["Company","Name","Role","Next Meeting Due","Notes","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], committee.map((x,i) => [esc(x.company), esc(x.name), esc(x.role), esc(x.due), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editCommittee(${i})">Edit</button>`]));
+  renderTable(byId("committeeTable"), ["Company","Name","Role","Next Meeting Due","Notes","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], committee.map((x,i) => [esc(x.company), esc(x.name), esc(x.role), esc(x.due), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editCommittee('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("caTable"), ["Company","Source","Reference","Priority","Assigned","Due","Status","Action","Completion","Evidence Tracker","Verification","Escalation"], reminders.map((x,i) => [
     esc(x.company), esc(x.source), esc(x.reference), statusPill(x.priority),
     x.locked ? esc(x.assigned) : `<input value="${esc(x.assigned)}" onchange="updateCA(${i},'assigned',this.value)">`,
