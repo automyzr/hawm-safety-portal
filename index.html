@@ -189,8 +189,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
 
     <section id="people" class="page">
       <div class="grid two">
-        <div class="card">
-          <h3>People Record</h3>
+        <div class="card" id="personCard" data-mode="add">
+          <h3 id="personCardTitle">Add Person Record</h3>
+          <div class="small" id="personCardSubtitle"></div>
           <div class="field-grid">
             <div class="field"><label>Company</label><input id="person_company" readonly></div>
             <div class="field"><label>Employee Name</label><input id="person_name"></div>
@@ -198,26 +199,14 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
             <div class="field"><label>Status</label><select id="person_status"><option>Active</option><option>Inactive</option></select></div>
             <div class="field span-4"><label>Roles</label><div id="rolePicker" class="role-checks"></div></div>
           </div>
-          <div class="footer-note"><button class="btn" onclick="addPerson()">Add Person Record</button></div>
+          <div class="footer-note">
+            <button class="btn" id="personSaveBtn" onclick="saveEditedPerson()">Add Person</button>
+            <button class="btn secondary" onclick="clearPersonEditor()">New / Clear</button>
+          </div>
         </div>
         <div class="card">
           <h3>Role-Based Mandatory Training</h3>
           <div id="trainingRulesBox" class="small"></div>
-        </div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Person</h3>
-        <div class="small">Click Edit on a person row, then update the record here.</div>
-        <input id="person_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Employee Name</label><input id="person_edit_name"></div>
-          <div class="field"><label>Department / Crew</label><input id="person_edit_department"></div>
-          <div class="field"><label>Status</label><select id="person_edit_status"><option>Active</option><option>Inactive</option></select></div>
-          <div class="field span-4"><label>Roles</label><div id="personEditRolePicker" class="role-checks"></div></div>
-        </div>
-        <div class="footer-note">
-          <button class="btn" onclick="saveEditedPerson()">Save Changes</button>
-          <button class="btn secondary" onclick="clearPersonEditor()">Clear</button>
         </div>
       </div>
       <div class="card"><h3>People Table</h3><div class="table-wrap"><table id="peopleTable"></table></div></div>
@@ -4807,70 +4796,116 @@ function renderEditRolePicker(selectedRoles=[]){
 function getEditedRoles(){
   return Array.from(byId("personEditRolePicker").querySelectorAll("input:checked")).map(x=>x.value);
 }
-function editPerson(index){
-  const people = filterByCompany(db.people);
-  const person = people[index];
-  if(!person) return;
-  const actualIndex = db.people.findIndex(x => x === person);
-  byId("person_edit_index").value = actualIndex;
-  byId("person_edit_name").value = person.name || "";
-  byId("person_edit_department").value = person.department || "";
-  byId("person_edit_status").value = person.status || "Active";
-  renderEditRolePicker(person.roles || []);
-}
-function clearPersonEditor(){
-  byId("person_edit_index").value = "";
-  byId("person_edit_name").value = "";
-  byId("person_edit_department").value = "";
-  byId("person_edit_status").value = "Active";
-  renderEditRolePicker([]);
-}
-async function saveEditedPerson(){
-  const index = Number(byId("person_edit_index").value);
-  if(Number.isNaN(index) || !db.people[index]){
-    alert("Select a person row first.");
+function editPerson(id){
+  const card = document.getElementById('personCard');
+  if(isCardDirty('personCard')){
+    _pendingEditCallback = () => _doEditPerson(id);
+    document.getElementById('discardDialog').showModal();
     return;
   }
-  const roles = getEditedRoles();
+  _doEditPerson(id);
+}
+function _doEditPerson(id){
+  const card = document.getElementById('personCard');
+  const people = filterByCompany(db.people);
+  let person = null;
+  if(typeof id === 'number'){
+    person = people[id];
+  } else {
+    person = db.people.find(p => p.id === id || p.guid === id);
+  }
+  if(!person) return;
+  byId("person_name").value = person.name || "";
+  byId("person_department").value = person.department || "";
+  byId("person_status").value = person.status || "Active";
+  renderEditRolePicker(person.roles || []);
+  card.dataset.mode = 'edit';
+  card.dataset.editId = person.id || person.guid || db.people.indexOf(person);
+  document.getElementById('personCardTitle').textContent = 'Edit Person';
+  document.getElementById('personCardSubtitle').textContent = person.name || '';
+  document.getElementById('personSaveBtn').textContent = 'Save Changes';
+  snapshotCard('personCard');
+}
+function clearPersonEditor(){
+  const card = document.getElementById('personCard');
+  byId("person_name").value = "";
+  byId("person_department").value = "";
+  byId("person_status").value = "Active";
+  renderEditRolePicker([]);
+  card.dataset.mode = 'add';
+  delete card.dataset.editId;
+  document.getElementById('personCardTitle').textContent = 'Add Person Record';
+  document.getElementById('personCardSubtitle').textContent = '';
+  document.getElementById('personSaveBtn').textContent = 'Add Person';
+  snapshotCard('personCard');
+}
+async function saveEditedPerson(){
+  const card = document.getElementById('personCard');
+  const mode = card.dataset.mode || 'add';
+  const roles = getSelectedRoles();
   if(!roles.length){
     alert("Select at least one role.");
     return;
   }
-  const oldState = JSON.parse(JSON.stringify(db.people[index]));
-  db.people[index] = {
-    ...db.people[index],
-    name: byId("person_edit_name").value.trim(),
-    department: byId("person_edit_department").value.trim(),
-    status: byId("person_edit_status").value,
-    roles
-  };
-  persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_people){
-    showToast("Read-only mode. Changes saved locally only.", "info");
-    clearPersonEditor();
-    rebuildAll();
-    return;
-  }
-  try {
-    const person = db.people[index];
-    if(!person.id){
-      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
-      const result = await graphCreateItem("people", fields);
-      person.id = result.id;
-      person.etag = result.etag;
-    } else {
-      const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
-      await graphUpdateItem("people", person.id, fields, person.etag);
-      logAuditEntry({user: "current_user", list: "people", itemId: person.id, action: "UPDATE", delta: fields});
+  if(mode === 'add'){
+    const company = selectedCompany();
+    if(company === "All Companies"){
+      alert("Select Heave Away or Cadillac first.");
+      return;
     }
-    showToast("✓ Saved to SharePoint", "success");
+    const entity = {company, name: byId("person_name").value.trim(), department: byId("person_department").value.trim(), status: byId("person_status").value, roles};
+    db.people.push(entity);
+    saveDB();
+    renderAll();
+    const fields = {Title: entity.name, Company: entity.company, Department: entity.department, Status: entity.status, "Roles@odata.type": "Collection(Edm.String)", Roles: entity.roles};
+    await syncCreateToSP("people", "write_enabled_people", entity, fields);
     clearPersonEditor();
-    rebuildAll();
-  } catch(err){
-    console.error("Write error:", err);
-    db.people[index] = oldState;
-    showToast(`Sync failed: ${err.message || err.code}`, "error");
-    rebuildAll();
+  } else {
+    const editId = card.dataset.editId;
+    let index = Number(editId);
+    if(Number.isNaN(index)){
+      index = db.people.findIndex(p => p.id === editId || p.guid === editId);
+    }
+    if(Number.isNaN(index) || !db.people[index]){
+      alert("Select a person row first.");
+      return;
+    }
+    const oldState = JSON.parse(JSON.stringify(db.people[index]));
+    db.people[index] = {
+      ...db.people[index],
+      name: byId("person_name").value.trim(),
+      department: byId("person_department").value.trim(),
+      status: byId("person_status").value,
+      roles
+    };
+    persistLocalSnapshot();
+    if(!FEATURE_FLAGS.write_enabled_people){
+      showToast("Read-only mode. Changes saved locally only.", "info");
+      clearPersonEditor();
+      rebuildAll();
+      return;
+    }
+    try {
+      const person = db.people[index];
+      if(!person.id){
+        const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
+        const result = await graphCreateItem("people", fields);
+        person.id = result.id;
+        person.etag = result.etag;
+      } else {
+        const fields = {Title: person.name, Company: person.company, Department: person.department, Status: person.status, "Roles@odata.type": "Collection(Edm.String)", Roles: person.roles};
+        await graphUpdateItem("people", person.id, fields, person.etag);
+        logAuditEntry({user: "current_user", list: "people", itemId: person.id, action: "UPDATE", delta: fields});
+      }
+      showToast("✓ Saved to SharePoint", "success");
+      clearPersonEditor();
+      rebuildAll();
+    } catch(err){
+      console.error("Write error:", err);
+      db.people[index] = oldState;
+      showToast(`Sync failed: ${err.message || err.code}`, "error");
+      rebuildAll();
+    }
   }
 }
 
@@ -4964,14 +4999,8 @@ async function saveEditedTraining(){
   } catch(e){ console.error("saveEditedTraining error:",e); alert("Failed to save training: "+e.message); }
 }
 
-async function addPerson(){
-  const company=selectedCompany(); if(company==="All Companies"){ alert("Select Heave Away or Cadillac first."); return; }
-  const roles=getSelectedRoles(); if(!roles.length){ alert("Select at least one role."); return; }
-  const entity = {company, name:byId("person_name").value.trim(), department:byId("person_department").value.trim(), status:byId("person_status").value, roles};
-  db.people.push(entity);
-  saveDB(); renderAll();
-  const fields = {Title: entity.name, Company: entity.company, Department: entity.department, Status: entity.status, "Roles@odata.type": "Collection(Edm.String)", Roles: entity.roles};
-  await syncCreateToSP("people", "write_enabled_people", entity, fields);
+function addPerson(){
+  clearPersonEditor();
 }
 
 async function addTraining(){
@@ -5812,7 +5841,7 @@ function renderAll(){
   const last=db.state.lastExport || "Never"; const lastDays=db.state.lastExport ? Math.abs(daysUntil(db.state.lastExport)) : null;
   byId("backupCard").innerHTML = `Last export: <strong>${esc(last)}</strong><br>Last import: <strong>${esc(db.state.lastImport||"Never")}</strong><br>${lastDays===null || lastDays>7 ? "<strong>Backup overdue</strong>" : "Backup current within 7 days"}`;
 
-  renderTable(byId("peopleTable"), ["Company","Employee","Roles","Department","Status","Edit"], people.map((x,i) => [esc(x.company), esc(x.name), esc((x.roles||[]).join(", ")), esc(x.department), statusPill(x.status), `<button class="btn secondary" onclick="editPerson(${i})">Edit</button>`]));
+  renderTable(byId("peopleTable"), ["Company","Employee","Roles","Department","Status","Edit"], people.map((x,i) => [esc(x.company), esc(x.name), esc((x.roles||[]).join(", ")), esc(x.department), statusPill(x.status), `<button class="btn secondary" onclick="editPerson('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining(${i})">Edit</button>`]));
   renderTable(byId("trainingGapTable"), ["Company","Employee","Roles","Required Course","Status","Due / Expiry","Notes"], gaps.map(x => [esc(x.company), esc(x.employee), esc(x.roles), esc(x.course), statusPill(x.status), esc(x.due), esc(x.notes)]));
   renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Edit"], docs.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary" onclick="editDocument(${i})">Edit</button>`]));
