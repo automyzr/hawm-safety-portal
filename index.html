@@ -499,8 +499,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="inspections" class="page">
-      <div class="card">
-        <h3>Inspection Record</h3>
+      <div class="card" id="inspectionCard" data-mode="add">
+        <h3 id="inspectionCardTitle">Add Inspection Record</h3>
+        <div class="small" id="inspectionCardSubtitle">Enter inspection information for the selected company.</div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="insp_company" readonly></div>
           <div class="field"><label>Date</label><input id="insp_date" type="date"></div>
@@ -512,29 +513,14 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field span-2"><label>Proof Description</label><input id="insp_proof_desc"></div>
           <div class="field"><label>Added By</label><input id="insp_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="insp_proof_date" type="date"></div>
-          <div class="field span-4"><label>Inspection Uploads</label><input id="insp_upload_files" type="file" multiple onchange="showSelectedPortalFiles('insp_upload_files','insp_upload_preview')"><div id="insp_upload_preview" class="file-preview">No files selected.</div></div>
+          <div class="field span-4"><label>Inspection Uploads</label><input id="insp_upload_files" type="file" multiple onchange="showSelectedPortalFiles('insp_upload_files','insp_upload_preview')"><div id="insp_upload_preview" class="file-preview">No files selected.</div><div id="insp_existing_uploads" class="attachment-list"></div></div>
         </div>
         <div style="margin-top:16px"><h4>Corrective Actions (up to 7)</h4></div>
         <div id="inspectionActionBlocks" class="grid"></div>
-        <div class="footer-note"><button class="btn" onclick="addInspection()">Add Inspection Record</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Inspection</h3>
-        <div class="small">Click Edit on an inspection row, then update it here.</div>
-        <input id="insp_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Date</label><input id="insp_edit_date" type="date"></div>
-          <div class="field"><label>Crew</label><input id="insp_edit_crew"></div>
-          <div class="field"><label>Location</label><input id="insp_edit_location"></div>
-          <div class="field"><label>Inspector</label><input id="insp_edit_inspector"></div>
-          <div class="field span-3"><label>Findings / Notes</label><textarea id="insp_edit_notes"></textarea></div>
-          <div class="field"><label>Proof Present?</label><select id="insp_edit_proof_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field span-2"><label>Proof Description</label><input id="insp_edit_proof_desc"></div>
-          <div class="field"><label>Added By</label><input id="insp_edit_proof_by"></div>
-          <div class="field"><label>Date Added</label><input id="insp_edit_proof_date" type="date"></div>
-          <div class="field span-4"><label>Inspection Uploads</label><input id="insp_edit_upload_files" type="file" multiple onchange="showSelectedPortalFiles('insp_edit_upload_files','insp_edit_upload_preview')"><div id="insp_edit_upload_preview" class="file-preview">No files selected.</div><div id="insp_existing_uploads" class="attachment-list"></div></div>
+        <div class="footer-note">
+          <button class="btn" id="inspectionSaveBtn" onclick="saveEditedInspection()">Add Inspection Record</button>
+          <button class="btn secondary" onclick="clearInspectionEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedInspection()">Save Changes</button> <button class="btn secondary" onclick="clearInspectionEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="inspectionTable"></table></div></div>
     </section>
@@ -5331,16 +5317,6 @@ async function batchAddDocuments(){
     await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
   }
 }
-async function addInspection(){
-  const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-  const uploads = [];
-  for(const file of Array.from(byId("insp_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
-  const entity = {company, date:byId("insp_date").value, crew:byId("insp_crew").value.trim(), location:byId("insp_location").value.trim(), inspector:byId("insp_inspector").value.trim(), notes:byId("insp_notes").value, proofPresent:byId("insp_proof_present").value, proofDescription:byId("insp_proof_desc").value.trim(), addedBy:byId("insp_proof_by").value.trim(), dateAdded:byId("insp_proof_date").value, uploads, actions:collectActionBlocks("inspection")};
-  db.inspections.push(entity);
-  clearActionBlocks("inspection"); clearPortalFilePicker("insp_upload_files","insp_upload_preview"); rebuildAll();
-  const fields = {Title: entity.location || "Inspection", Company: entity.company, "Inspection_x0020_Date": entity.date, Area: entity.location, Inspector: entity.inspector, Findings: entity.notes, Crew: entity.crew, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
-  await syncCreateToSP("inspections", "write_enabled_inspections", entity, fields);
-}
 async function addIncident(){
   try{
     const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
@@ -5401,69 +5377,125 @@ async function addCommittee(){
   await syncCreateToSP("committee", "write_enabled_committee", entity, fields);
 }
 
-function editInspection(index){
-  const rows = filterByCompany(db.inspections); const rec = rows[index]; if(!rec) return;
-  const actualIndex = db.inspections.findIndex(x => x === rec);
-  byId("insp_edit_index").value = actualIndex;
-  byId("insp_edit_date").value = rec.date || "";
-  byId("insp_edit_crew").value = rec.crew || "";
-  byId("insp_edit_location").value = rec.location || "";
-  byId("insp_edit_inspector").value = rec.inspector || "";
-  byId("insp_edit_notes").value = rec.notes || "";
-  byId("insp_edit_proof_present").value = rec.proofPresent || "No";
-  byId("insp_edit_proof_desc").value = rec.proofDescription || "";
-  byId("insp_edit_proof_by").value = rec.addedBy || "";
-  byId("insp_edit_proof_date").value = rec.dateAdded || "";
-  byId("insp_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
-}
-function clearInspectionEditor(){
-  ["insp_edit_index","insp_edit_date","insp_edit_crew","insp_edit_location","insp_edit_inspector","insp_edit_notes","insp_edit_proof_desc","insp_edit_proof_by","insp_edit_proof_date"].forEach(id => byId(id).value = "");
-  byId("insp_edit_proof_present").value = "No";
-  clearPortalFilePicker("insp_edit_upload_files","insp_edit_upload_preview");
-  byId("insp_existing_uploads").innerHTML = "";
-}
-async function saveEditedInspection(){
-  const index = Number(byId("insp_edit_index").value); if(Number.isNaN(index) || !db.inspections[index]){ alert("Select an inspection row first."); return; }
-  const oldState = JSON.parse(JSON.stringify(db.inspections[index]));
-  const existing = db.inspections[index].uploads || [];
-  const added = [];
-  for(const file of Array.from(byId("insp_edit_upload_files").files || [])){ added.push(await storePortalFile(file)); }
-  db.inspections[index] = {...db.inspections[index], date:byId("insp_edit_date").value, crew:byId("insp_edit_crew").value.trim(), location:byId("insp_edit_location").value.trim(), inspector:byId("insp_edit_inspector").value.trim(), notes:byId("insp_edit_notes").value, proofPresent:byId("insp_edit_proof_present").value, proofDescription:byId("insp_edit_proof_desc").value.trim(), addedBy:byId("insp_edit_proof_by").value.trim(), dateAdded:byId("insp_edit_proof_date").value, uploads:[...existing, ...added]};
-  persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_inspections){
-    showToast("Read-only mode. Changes saved locally only.", "info");
-    clearInspectionEditor(); rebuildAll();
+function editInspection(id){
+  const card = document.getElementById('inspectionCard');
+  if(isCardDirty('inspectionCard')){
+    _pendingEditCallback = () => _doEditInspection(id);
+    document.getElementById('discardDialog').showModal();
     return;
   }
-  try {
-    const inspection = db.inspections[index];
-    const fields = {
-      Title: inspection.location || "Inspection",
-      Company: inspection.company,
-      "Inspection_x0020_Date": inspection.date,
-      Area: inspection.location,
-      Inspector: inspection.inspector,
-      Findings: inspection.notes,
-      Crew: inspection.crew,
-      ProofPresent: inspection.proofPresent,
-      ProofDescription: inspection.proofDescription,
-      AddedBy: inspection.addedBy,
-      DateAdded: inspection.dateAdded
-    };
-    if(!inspection.id){
-      const result = await graphCreateItem("inspections", fields);
-      inspection.id = result.id;
-      inspection.etag = result.etag;
+  _doEditInspection(id);
+}
+function _doEditInspection(id){
+  const card = document.getElementById('inspectionCard');
+  const rows = filterByCompany(db.inspections);
+  let record = null;
+  if(typeof id === 'number'){
+    record = rows[id];
+  } else {
+    record = db.inspections.find(x => x.id === id || x.guid === id);
+  }
+  if(!record) return;
+  byId("insp_date").value = record.date || "";
+  byId("insp_crew").value = record.crew || "";
+  byId("insp_location").value = record.location || "";
+  byId("insp_inspector").value = record.inspector || "";
+  byId("insp_notes").value = record.notes || "";
+  byId("insp_proof_present").value = record.proofPresent || "No";
+  byId("insp_proof_desc").value = record.proofDescription || "";
+  byId("insp_proof_by").value = record.addedBy || "";
+  byId("insp_proof_date").value = record.dateAdded || "";
+  byId("insp_existing_uploads").innerHTML = renderPortalFileLinks(record.uploads || [], {allowDelete: true});
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.inspections.indexOf(record);
+  document.getElementById('inspectionCardTitle').textContent = 'Edit Inspection Record';
+  document.getElementById('inspectionCardSubtitle').textContent = record.location || record.date || '';
+  document.getElementById('inspectionSaveBtn').textContent = 'Save Changes';
+  snapshotCard('inspectionCard');
+}
+function clearInspectionEditor(){
+  const card = document.getElementById('inspectionCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('inspectionCardTitle').textContent = 'Add Inspection Record';
+  document.getElementById('inspectionCardSubtitle').textContent = 'Enter inspection information for the selected company.';
+  document.getElementById('inspectionSaveBtn').textContent = 'Add Inspection Record';
+  ["insp_date","insp_crew","insp_location","insp_inspector","insp_notes","insp_proof_desc","insp_proof_by","insp_proof_date"].forEach(id => byId(id).value = "");
+  byId("insp_proof_present").value = "No";
+  clearPortalFilePicker("insp_upload_files","insp_upload_preview");
+  byId("insp_existing_uploads").innerHTML = "";
+  clearSnapshot('inspectionCard');
+}
+async function saveEditedInspection(){
+  try{
+    const card = document.getElementById('inspectionCard');
+    const mode = card.dataset.mode || 'add';
+    if(mode === 'add'){
+      const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+      const uploads = [];
+      for(const file of Array.from(byId("insp_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
+      const entity = {id: "insp_" + Date.now(), company, date:byId("insp_date").value, crew:byId("insp_crew").value.trim(), location:byId("insp_location").value.trim(), inspector:byId("insp_inspector").value.trim(), notes:byId("insp_notes").value, proofPresent:byId("insp_proof_present").value, proofDescription:byId("insp_proof_desc").value.trim(), addedBy:byId("insp_proof_by").value.trim(), dateAdded:byId("insp_proof_date").value, uploads, actions:collectActionBlocks("inspection")};
+      const fields = {Title: entity.location || "Inspection", Company: entity.company, "Inspection_x0020_Date": entity.date, Area: entity.location, Inspector: entity.inspector, Findings: entity.notes, Crew: entity.crew, ProofPresent: entity.proofPresent, ProofDescription: entity.proofDescription, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+      await syncCreateToSP("inspections", "write_enabled_inspections", entity, fields);
+      db.inspections.push(entity);
+      clearActionBlocks("inspection"); clearPortalFilePicker("insp_upload_files","insp_upload_preview"); clearInspectionEditor();
+      rebuildAll();
     } else {
-      await graphUpdateItem("inspections", inspection.id, fields, inspection.etag);
+      if(!db.inspections){ db.inspections = []; }
+      const editId = card.dataset.editId;
+      let index = -1;
+      if(!isNaN(editId)){
+        index = Number(editId);
+      } else {
+        const rec = db.inspections.find(x => x.id === editId || x.guid === editId);
+        if(rec) index = db.inspections.indexOf(rec);
+      }
+      if(index < 0 || !db.inspections[index]){
+        alert("Select an inspection row first.");
+        return;
+      }
+      const oldState = JSON.parse(JSON.stringify(db.inspections[index]));
+      const existing = db.inspections[index].uploads || [];
+      const added = [];
+      for(const file of Array.from(byId("insp_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+      db.inspections[index] = {...db.inspections[index], date:byId("insp_date").value, crew:byId("insp_crew").value.trim(), location:byId("insp_location").value.trim(), inspector:byId("insp_inspector").value.trim(), notes:byId("insp_notes").value, proofPresent:byId("insp_proof_present").value, proofDescription:byId("insp_proof_desc").value.trim(), addedBy:byId("insp_proof_by").value.trim(), dateAdded:byId("insp_proof_date").value, uploads:[...existing, ...added]};
+      persistLocalSnapshot();
+      if(!FEATURE_FLAGS.write_enabled_inspections){
+        showToast("Read-only mode. Changes saved locally only.", "info");
+        clearInspectionEditor();
+        rebuildAll();
+        return;
+      }
+      const inspection = db.inspections[index];
+      const fields = {
+        Title: inspection.location || "Inspection",
+        Company: inspection.company,
+        "Inspection_x0020_Date": inspection.date,
+        Area: inspection.location,
+        Inspector: inspection.inspector,
+        Findings: inspection.notes,
+        Crew: inspection.crew,
+        ProofPresent: inspection.proofPresent,
+        ProofDescription: inspection.proofDescription,
+        AddedBy: inspection.addedBy,
+        DateAdded: inspection.dateAdded
+      };
+      if(!inspection.id){
+        const result = await graphCreateItem("inspections", fields);
+        inspection.id = result.id;
+        inspection.etag = result.etag;
+      } else {
+        await graphUpdateItem("inspections", inspection.id, fields, inspection.etag);
+      }
+      logAuditEntry({user: "current_user", list: "inspections", itemId: inspection.id, action: "UPDATE", delta: fields});
+      showToast("✓ Saved to SharePoint", "success");
+      clearInspectionEditor();
+      rebuildAll();
     }
-    logAuditEntry({user: "current_user", list: "inspections", itemId: inspection.id, action: "UPDATE", delta: fields});
-    showToast("✓ Saved to SharePoint", "success");
   } catch(err){
-    db.inspections[index] = oldState;
+    console.error("Write error:", err);
     showToast(`Sync failed: ${err.message || err.code}`, "error");
   }
-  clearInspectionEditor(); rebuildAll();
 }
 
 function editIncident(index){
@@ -6002,7 +6034,7 @@ function renderAll(){
   populateMaintRecordDropdowns();
   renderMaintLocations();
   renderMaintRecords();
-  renderTable(byId("inspectionTable"), ["Company","Date","Crew","Location","Inspector","Findings","Proof Present","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], inspections.map((x,i) => [esc(x.company), esc(x.date), esc(x.crew), esc(x.location), esc(x.inspector), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editInspection(${i})">Edit</button>`]));
+  renderTable(byId("inspectionTable"), ["Company","Date","Crew","Location","Inspector","Findings","Proof Present","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], inspections.map((x,i) => [esc(x.company), esc(x.date), esc(x.crew), esc(x.location), esc(x.inspector), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editInspection('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("incidentTable"), ["Company","Incident #","Date","Employee","Witnesses","Location","Severity","Immediate Causes","Basic Causes","Issue Tags","Description","Photos","Video","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], incidents.map((x,i) => [esc(x.company), esc(x.incidentNumber || ""), esc(x.date), esc(x.employee), esc((x.witnesses || []).join(", ")), esc(x.location), statusPill(x.severity), esc((Array.isArray(x.immediateCause) ? x.immediateCause : (x.immediateCause ? [x.immediateCause] : [])).join(", ")), esc((Array.isArray(x.basicCause) ? x.basicCause : (x.basicCause ? [x.basicCause] : [])).join(", ")), esc((x.issueTags || []).join(", ")), esc(x.description), statusPill(x.photosPresent), statusPill(x.videoPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editIncident(${i})">Edit</button>`]));
   renderTable(byId("hazardTable"), ["Company","Date","Task","Location","Leader","Hazards","Controls","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], hazard.map((x,i) => [esc(x.company), esc(x.date), esc(x.task), esc(x.location), esc(x.leader), esc(x.hazards), esc(x.controls), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editHazard(${i})">Edit</button>`]));
   renderTable(byId("committeeTable"), ["Company","Name","Role","Next Meeting Due","Notes","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], committee.map((x,i) => [esc(x.company), esc(x.name), esc(x.role), esc(x.due), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editCommittee(${i})">Edit</button>`]));
