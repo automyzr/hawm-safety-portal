@@ -479,8 +479,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="lifts" class="page">
-      <div class="card">
-        <h2>Lifts</h2>
+      <div class="card" id="liftCard" data-mode="add">
+        <h3 id="liftCardTitle">Add Lift Record</h3>
+        <div class="small" id="liftCardSubtitle">Enter lift information for the selected truck.</div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="lift_company" readonly></div>
           <div class="field"><label>Date</label><input id="lift_date" type="date"></div>
@@ -489,20 +490,10 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Lift Type</label><select id="lift_type"><option></option><option>Roll Off</option><option>Front Load</option><option>Fork Truck</option></select></div>
           <div class="field"><label>Lift Count</label><input id="lift_count" type="number" step="1"></div>
         </div>
-        <div class="footer-note"><button class="btn" onclick="addLift()">Add</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Lift</h3>
-        <div class="small">Click Edit on a lift row, then update it here.</div>
-        <input id="lift_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Date</label><input id="lift_edit_date" type="date"></div>
-          <div class="field"><label>Operator</label><select id="lift_edit_operator" class="people-select"></select></div>
-          <div class="field"><label>Unit</label><select id="lift_edit_unit"></select></div>
-          <div class="field"><label>Lift Type</label><select id="lift_edit_type"><option></option><option>Roll Off</option><option>Front Load</option><option>Fork Truck</option></select></div>
-          <div class="field"><label>Lift Count</label><input id="lift_edit_count" type="number" step="1"></div>
+        <div class="footer-note">
+          <button class="btn" id="liftSaveBtn" onclick="saveEditedLift()">Add Lift Record</button>
+          <button class="btn secondary" onclick="clearLiftEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedLift()">Save Changes</button> <button class="btn secondary" onclick="clearLiftEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="liftsTable"></table></div></div>
     </section>
@@ -2834,7 +2825,7 @@ function populateEmployeeLinkedDropdowns(){
     "incident_employee","incident_edit_employee",
     "committee_name","committee_edit_name",
     "toolbox_presenter","vehicle_reported_by",
-    "lift_operator","lift_edit_operator","truck_person"
+    "lift_operator","truck_person"
   ];
   ids.forEach(id => {
     const el = byId(id);
@@ -2844,7 +2835,7 @@ function populateEmployeeLinkedDropdowns(){
     if(current && Array.from(el.options).some(o => o.value === current)) el.value = current;
   });
   const unitOptionHtml = getTruckUnitOptions(true);
-  const unitIds = ["lift_unit","lift_edit_unit"];
+  const unitIds = ["lift_unit"];
   unitIds.forEach(id => {
     const el = byId(id);
     if(!el) return;
@@ -3824,101 +3815,138 @@ function renderTruckProfiles(){
   ]));
 }
 
-async function addLift(){
-  const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
-  if(!db.lifts) db.lifts=[];
-  const dateVal = byId("lift_date").value.trim();
-  const operatorVal = byId("lift_operator").value.trim();
-  const unitVal = byId("lift_unit").value.trim();
-  const typeVal = byId("lift_type").value.trim();
-  const countVal = byId("lift_count").value.trim();
-  if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
-  const lift = {
-    company,
-    date: dateVal,
-    operator: operatorVal,
-    unit: unitVal,
-    liftType: typeVal,
-    liftCount: Number(countVal)
-  };
-  db.lifts.push(lift);
-  clearLiftEditor();
-  rebuildAll();
-  const fields = {Title: `${lift.date} ${lift.unit || lift.liftType}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: lift.liftCount};
-  await syncCreateToSP("lifts", "write_enabled_lifts", lift, fields);
+function editLift(id){
+  const card = document.getElementById('liftCard');
+  if(isCardDirty('liftCard')){
+    _pendingEditCallback = () => _doEditLift(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditLift(id);
 }
-
-function editLift(index){
-  if(!db.lifts || !db.lifts[index]){ alert("Lift record not found."); return; }
-  const record = db.lifts[index];
-  byId("lift_edit_index").value = index;
-  byId("lift_edit_date").value = record.date || "";
-  byId("lift_edit_operator").value = record.operator || "";
-  byId("lift_edit_unit").value = record.unit || "";
-  byId("lift_edit_type").value = record.liftType || "";
-  byId("lift_edit_count").value = record.liftCount || "";
+function _doEditLift(id){
+  const card = document.getElementById('liftCard');
+  const rows = filterByCompany(db.lifts);
+  let record = null;
+  if(typeof id === 'number'){
+    record = rows[id];
+  } else {
+    record = db.lifts.find(x => x.id === id || x.guid === id);
+  }
+  if(!record) return;
+  byId("lift_date").value = record.date || "";
+  byId("lift_operator").value = record.operator || "";
+  byId("lift_unit").value = record.unit || "";
+  byId("lift_type").value = record.liftType || "";
+  byId("lift_count").value = record.liftCount || "";
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.lifts.indexOf(record);
+  document.getElementById('liftCardTitle').textContent = 'Edit Lift Record';
+  document.getElementById('liftCardSubtitle').textContent = record.date || record.liftType || '';
+  document.getElementById('liftSaveBtn').textContent = 'Save Changes';
+  snapshotCard('liftCard');
 }
 
 async function saveEditedLift(){
-  if(!db.lifts){ db.lifts = []; }
-  const index = Number(byId("lift_edit_index").value);
-  if(Number.isNaN(index) || !db.lifts[index]){
-    alert("Select a lift row first.");
-    return;
-  }
-  const dateVal = byId("lift_edit_date").value.trim();
-  const operatorVal = byId("lift_edit_operator").value.trim();
-  const unitVal = byId("lift_edit_unit").value.trim();
-  const typeVal = byId("lift_edit_type").value.trim();
-  const countVal = byId("lift_edit_count").value.trim();
-  if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
-  const oldState = JSON.parse(JSON.stringify(db.lifts[index]));
-  db.lifts[index] = {
-    ...db.lifts[index],
-    date: dateVal,
-    operator: operatorVal,
-    unit: unitVal,
-    liftType: typeVal,
-    liftCount: Number(countVal)
-  };
-  persistLocalSnapshot();
-  if(!FEATURE_FLAGS.write_enabled_lifts){
-    showToast("Read-only mode. Changes saved locally only.", "info");
-    clearLiftEditor();
-    rebuildAll();
-    return;
-  }
-  try {
-    const lift = db.lifts[index];
-    const fields = {Title: `${lift.date || ""} ${lift.unit || lift.liftType || ""}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: Number(lift.liftCount) || 0};
-    if(!lift.id){
-      const result = await graphCreateItem("lifts", fields);
-      lift.id = result.id;
-      lift.etag = result.etag;
+  try{
+    const card = document.getElementById('liftCard');
+    const mode = card.dataset.mode || 'add';
+    if(mode === 'add'){
+      const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+      if(!db.lifts) db.lifts=[];
+      const dateVal = byId("lift_date").value.trim();
+      const operatorVal = byId("lift_operator").value.trim();
+      const unitVal = byId("lift_unit").value.trim();
+      const typeVal = byId("lift_type").value.trim();
+      const countVal = byId("lift_count").value.trim();
+      if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
+      const liftId = "lift_" + Date.now();
+      const lift = {
+        id: liftId,
+        company,
+        date: dateVal,
+        operator: operatorVal,
+        unit: unitVal,
+        liftType: typeVal,
+        liftCount: Number(countVal)
+      };
+      const fields = {Title: `${lift.date} ${lift.unit || lift.liftType}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: lift.liftCount};
+      await syncCreateToSP("lifts", "write_enabled_lifts", lift, fields);
+      db.lifts.push(lift);
+      clearLiftEditor();
+      rebuildAll();
     } else {
-      await graphUpdateItem("lifts", lift.id, fields, lift.etag);
+      if(!db.lifts){ db.lifts = []; }
+      const editId = card.dataset.editId;
+      let index = -1;
+      if(!isNaN(editId)){
+        index = Number(editId);
+      } else {
+        const rec = db.lifts.find(x => x.id === editId || x.guid === editId);
+        if(rec) index = db.lifts.indexOf(rec);
+      }
+      if(index < 0 || !db.lifts[index]){
+        alert("Select a lift row first.");
+        return;
+      }
+      const dateVal = byId("lift_date").value.trim();
+      const operatorVal = byId("lift_operator").value.trim();
+      const unitVal = byId("lift_unit").value.trim();
+      const typeVal = byId("lift_type").value.trim();
+      const countVal = byId("lift_count").value.trim();
+      if(!dateVal || !operatorVal || !typeVal || !countVal){ alert("Date, Operator, Lift Type, and Lift Count are required."); return; }
+      const oldState = JSON.parse(JSON.stringify(db.lifts[index]));
+      db.lifts[index] = {
+        ...db.lifts[index],
+        date: dateVal,
+        operator: operatorVal,
+        unit: unitVal,
+        liftType: typeVal,
+        liftCount: Number(countVal)
+      };
+      persistLocalSnapshot();
+      if(!FEATURE_FLAGS.write_enabled_lifts){
+        showToast("Read-only mode. Changes saved locally only.", "info");
+        clearLiftEditor();
+        rebuildAll();
+        return;
+      }
+      const lift = db.lifts[index];
+      const fields = {Title: `${lift.date || ""} ${lift.unit || lift.liftType || ""}`.trim() || "Lift", Company: lift.company, Date: lift.date, Operator: lift.operator, Unit: lift.unit, LiftType: lift.liftType, LiftCount: Number(lift.liftCount) || 0};
+      if(!lift.id){
+        const result = await graphCreateItem("lifts", fields);
+        lift.id = result.id;
+        lift.etag = result.etag;
+      } else {
+        await graphUpdateItem("lifts", lift.id, fields, lift.etag);
+      }
+      logAuditEntry({user: "current_user", list: "lifts", itemId: lift.id, action: "UPDATE", delta: fields});
+      showToast("✓ Saved to SharePoint", "success");
+      clearLiftEditor();
+      rebuildAll();
     }
-    logAuditEntry({user: "current_user", list: "lifts", itemId: lift.id, action: "UPDATE", delta: fields});
-    showToast("✓ Saved to SharePoint", "success");
   } catch(err){
     console.error("Write error:", err);
-    db.lifts[index] = oldState;
     showToast(`Sync failed: ${err.message || err.code}`, "error");
   }
-  clearLiftEditor();
-  rebuildAll();
 }
 
 function clearLiftEditor(){
-  ["lift_edit_index","lift_edit_date","lift_edit_operator","lift_edit_unit","lift_edit_type","lift_edit_count"].forEach(id => { if(byId(id)) byId(id).value = ""; });
+  const card = document.getElementById('liftCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('liftCardTitle').textContent = 'Add Lift Record';
+  document.getElementById('liftCardSubtitle').textContent = 'Enter lift information for the selected truck.';
+  document.getElementById('liftSaveBtn').textContent = 'Add Lift Record';
   ["lift_date","lift_operator","lift_unit","lift_type","lift_count"].forEach(id => { if(byId(id)) byId(id).value = ""; });
+  clearSnapshot('liftCard');
 }
 
 function renderLifts(){
   if(!db.lifts) db.lifts = [];
   const lifts = filterByCompany(db.lifts);
   renderTable(byId("liftsTable"), ["Date","Operator","Unit","Type","Count","Edit"], lifts.map((x,i) => [
-    esc(x.date), esc(x.operator), esc(x.unit), esc(x.liftType), esc(x.liftCount), `<button class="btn secondary" onclick="editLift(${i})">Edit</button>`
+    esc(x.date), esc(x.operator), esc(x.unit), esc(x.liftType), esc(x.liftCount), `<button class="btn secondary" onclick="editLift('${x.id || x.guid || i}')">Edit</button>`
   ]));
 }
 
