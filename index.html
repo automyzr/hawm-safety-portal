@@ -526,8 +526,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     </section>
 
     <section id="incidents" class="page">
-      <div class="card">
-        <h3>Incident Record</h3>
+      <div class="card" id="incidentCard" data-mode="add">
+        <h3 id="incidentCardTitle">Add Incident Record</h3>
+        <div class="small" id="incidentCardSubtitle">Enter incident information for the selected company.</div>
         <div class="field-grid">
           <div class="field"><label>Company</label><input id="incident_company" readonly></div>
           <div class="field"><label>Date</label><input id="incident_date" type="date"></div>
@@ -549,39 +550,14 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field span-4"><label>Witnesses</label><div id="incident_witnesses" class="role-checks"></div></div>
           <div class="field"><label>Added By</label><input id="incident_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="incident_proof_date" type="date"></div>
-          <div class="field span-4"><label>Incident Uploads</label><input id="incident_upload_files" type="file" multiple onchange="showSelectedPortalFiles('incident_upload_files','incident_upload_preview')"><div id="incident_upload_preview" class="file-preview">No files selected.</div></div>
+          <div class="field span-4"><label>Incident Uploads</label><input id="incident_upload_files" type="file" multiple onchange="showSelectedPortalFiles('incident_upload_files','incident_upload_preview')"><div id="incident_upload_preview" class="file-preview">No files selected.</div><div id="incident_existing_uploads" class="attachment-list"></div></div>
         </div>
         <div style="margin-top:16px"><h4>Corrective Actions (up to 7)</h4><div class="small">All incident actions are High priority and due within 48 hours.</div></div>
         <div id="incidentActionBlocks" class="grid"></div>
-        <div class="footer-note"><button class="btn" onclick="addIncident()">Add Incident Record</button></div>
-      </div>
-      <div class="card">
-        <h3>Edit Selected Incident</h3>
-        <div class="small">Click Edit on an incident row, then update it here.</div>
-        <input id="incident_edit_index" type="hidden">
-        <div class="field-grid">
-          <div class="field"><label>Date</label><input id="incident_edit_date" type="date"></div>
-          <div class="field"><label>Incident Number</label><input id="incident_edit_number"></div>
-          <div class="field"><label>Employee</label><select id="incident_edit_employee" class="people-select"></select></div>
-          <div class="field"><label>Location</label><input id="incident_edit_location"></div>
-          <div class="field"><label>Unit</label><input id="incident_edit_unit"></div>
-          <div class="field"><label>Severity</label><select id="incident_edit_severity"><option>Near Miss</option><option>Minor</option><option>First Aid</option><option>Medical Aid</option><option>Lost Time</option><option>Property Damage</option><option>Allegation</option></select></div>
-          <div class="field"><label>Lift Type (Optional)</label><select id="incident_edit_liftType"><option></option><option>Roll Off</option><option>Front Load</option><option>Fork Truck</option></select></div>
-          <div class="field span-4"><label>Description</label><textarea id="incident_edit_description"></textarea></div>
-          <div class="field"><label>Photos Present?</label><select id="incident_edit_photos_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field"><label>Video Present?</label><select id="incident_edit_video_present"><option>No</option><option>Yes</option></select></div>
-          <div class="field"><label>Proof Description</label><input id="incident_edit_proof_desc"></div>
-          <div class="field span-4"><label>Immediate Causes</label><div id="incident_edit_immediate" class="role-checks"></div></div>
-          <div class="field span-4"><label>Explain Immediate Causes Further</label><input id="incident_edit_immediate_notes"></div>
-          <div class="field span-4"><label>Basic Causes</label><div id="incident_edit_basic" class="role-checks"></div></div>
-          <div class="field span-4"><label>Explain Basic Causes Further</label><input id="incident_edit_basic_notes"></div>
-          <div class="field"><label>Issue Tags</label><input id="incident_edit_tags"></div>
-          <div class="field span-4"><label>Witnesses</label><div id="incident_edit_witnesses" class="role-checks"></div></div>
-          <div class="field"><label>Added By</label><input id="incident_edit_proof_by"></div>
-          <div class="field"><label>Date Added</label><input id="incident_edit_proof_date" type="date"></div>
-          <div class="field span-4"><label>Incident Uploads</label><input id="incident_edit_upload_files" type="file" multiple onchange="showSelectedPortalFiles('incident_edit_upload_files','incident_edit_upload_preview')"><div id="incident_edit_upload_preview" class="file-preview">No files selected.</div><div id="incident_existing_uploads" class="attachment-list"></div></div>
+        <div class="footer-note">
+          <button class="btn" id="incidentSaveBtn" onclick="saveEditedIncident()">Add Incident Record</button>
+          <button class="btn secondary" onclick="clearIncidentEditor()">New / Clear</button>
         </div>
-        <div class="footer-note"><button class="btn" onclick="saveEditedIncident()">Save Changes</button> <button class="btn secondary" onclick="clearIncidentEditor()">Clear</button></div>
       </div>
       <div class="card"><div class="table-wrap"><table id="incidentTable"></table></div></div>
     </section>
@@ -1048,8 +1024,6 @@ function getCheckedValues(containerId){
 function populateIncidentCauseDropdowns(){
   renderCauseCheckboxes("incident_immediate", immediateCauseOptions, []);
   renderCauseCheckboxes("incident_basic", basicCauseOptions, []);
-  renderCauseCheckboxes("incident_edit_immediate", immediateCauseOptions, []);
-  renderCauseCheckboxes("incident_edit_basic", basicCauseOptions, []);
 }
 
 
@@ -2808,7 +2782,7 @@ function populateEmployeeLinkedDropdowns(){
   const optionHtml = getPeopleOptions(true);
   const ids = [
     "training_employee",
-    "incident_employee","incident_edit_employee",
+    "incident_employee",
     "committee_name","committee_edit_name",
     "toolbox_presenter","vehicle_reported_by",
     "lift_operator","truck_person"
@@ -3115,13 +3089,9 @@ function populateWitnessDropdowns(selectedWitnesses=[]){
     return `<label><input type="checkbox" value="${esc(p.name)}" ${checked}> <span>${esc(p.name)}</span></label>`;
   }).join("");
   if(byId("incident_witnesses")) { byId("incident_witnesses").style.gridTemplateColumns = "repeat(3,minmax(0,1fr))"; byId("incident_witnesses").innerHTML = options || '<div class="small">No people records found for this company.</div>'; }
-  if(byId("incident_edit_witnesses")) { byId("incident_edit_witnesses").style.gridTemplateColumns = "repeat(3,minmax(0,1fr))"; byId("incident_edit_witnesses").innerHTML = options || '<div class="small">No people records found for this company.</div>'; }
 }
 function getSelectedWitnesses(){
   return Array.from((byId("incident_witnesses")?.querySelectorAll("input:checked")) || []).map(x => x.value);
-}
-function getEditedWitnesses(){
-  return Array.from((byId("incident_edit_witnesses")?.querySelectorAll("input:checked")) || []).map(x => x.value);
 }
 function populateEmployeeProfileDropdown(){
   const people = filterByCompany(db.people);
@@ -5498,120 +5468,200 @@ async function saveEditedInspection(){
   }
 }
 
-function editIncident(index){
-  const rows = filterByCompany(db.incidents); const rec = rows[index]; if(!rec) return;
-  const actualIndex = db.incidents.findIndex(x => x === rec);
-  byId("incident_edit_index").value = actualIndex;
-  byId("incident_edit_date").value = rec.date || "";
-  byId("incident_edit_number").value = rec.incidentNumber || "";
-  byId("incident_edit_employee").value = rec.employee || "";
-  byId("incident_edit_location").value = rec.location || "";
-  byId("incident_edit_unit").value = rec.unit || "";
-  byId("incident_edit_severity").value = rec.severity || "Near Miss";
-  byId("incident_edit_liftType").value = rec.liftType || "";
-  byId("incident_edit_description").value = rec.description || "";
-  byId("incident_edit_photos_present").value = rec.photosPresent || "No";
-  byId("incident_edit_video_present").value = rec.videoPresent || "No";
-  byId("incident_edit_proof_desc").value = rec.proofDescription || "";
-  renderCauseCheckboxes("incident_edit_immediate", immediateCauseOptions, Array.isArray(rec.immediateCause) ? rec.immediateCause : (rec.immediateCause ? [rec.immediateCause] : []));
-  byId("incident_edit_immediate_notes").value = rec.immediateCauseNotes || "";
-  renderCauseCheckboxes("incident_edit_basic", basicCauseOptions, Array.isArray(rec.basicCause) ? rec.basicCause : (rec.basicCause ? [rec.basicCause] : []));
-  byId("incident_edit_basic_notes").value = rec.basicCauseNotes || "";
-  byId("incident_edit_tags").value = (rec.issueTags || []).join(", ");
-  populateWitnessDropdowns(rec.witnesses || []);
-  byId("incident_edit_proof_by").value = rec.addedBy || "";
-  byId("incident_edit_proof_date").value = rec.dateAdded || "";
-  byId("incident_existing_uploads").innerHTML = renderPortalFileLinks(rec.uploads || [], {allowDelete: true});
+function editIncident(id){
+  const card = document.getElementById('incidentCard');
+  if(isCardDirty('incidentCard')){
+    _pendingEditCallback = () => _doEditIncident(id);
+    document.getElementById('discardDialog').showModal();
+    return;
+  }
+  _doEditIncident(id);
+}
+function _doEditIncident(id){
+  const card = document.getElementById('incidentCard');
+  const rows = filterByCompany(db.incidents);
+  let record = null;
+  if(typeof id === 'number'){
+    record = rows[id];
+  } else {
+    record = db.incidents.find(x => x.id === id || x.guid === id);
+  }
+  if(!record) return;
+  byId("incident_date").value = record.date || "";
+  byId("incident_number").value = record.incidentNumber || "";
+  byId("incident_employee").value = record.employee || "";
+  byId("incident_location").value = record.location || "";
+  byId("incident_unit").value = record.unit || "";
+  byId("incident_severity").value = record.severity || "Near Miss";
+  byId("incident_liftType").value = record.liftType || "";
+  byId("incident_description").value = record.description || "";
+  byId("incident_photos_present").value = record.photosPresent || "No";
+  byId("incident_video_present").value = record.videoPresent || "No";
+  byId("incident_proof_desc").value = record.proofDescription || "";
+  renderCauseCheckboxes("incident_immediate", immediateCauseOptions, Array.isArray(record.immediateCause) ? record.immediateCause : (record.immediateCause ? [record.immediateCause] : []));
+  byId("incident_immediate_notes").value = record.immediateCauseNotes || "";
+  renderCauseCheckboxes("incident_basic", basicCauseOptions, Array.isArray(record.basicCause) ? record.basicCause : (record.basicCause ? [record.basicCause] : []));
+  byId("incident_basic_notes").value = record.basicCauseNotes || "";
+  byId("incident_tags").value = (record.issueTags || []).join(", ");
+  populateWitnessDropdowns(record.witnesses || []);
+  byId("incident_proof_by").value = record.addedBy || "";
+  byId("incident_proof_date").value = record.dateAdded || "";
+  byId("incident_existing_uploads").innerHTML = renderPortalFileLinks(record.uploads || [], {allowDelete: true});
+  card.dataset.mode = 'edit';
+  card.dataset.editId = record.id || record.guid || db.incidents.indexOf(record);
+  document.getElementById('incidentCardTitle').textContent = 'Edit Incident Record';
+  document.getElementById('incidentCardSubtitle').textContent = record.incidentNumber || record.date || '';
+  document.getElementById('incidentSaveBtn').textContent = 'Save Changes';
+  snapshotCard('incidentCard');
 }
 function clearIncidentEditor(){
-  ["incident_edit_index","incident_edit_date","incident_edit_number","incident_edit_employee","incident_edit_location","incident_edit_unit","incident_edit_description","incident_edit_proof_desc","incident_edit_immediate_notes","incident_edit_basic_notes","incident_edit_tags","incident_edit_proof_by","incident_edit_proof_date"].forEach(id => byId(id).value = "");
-  byId("incident_edit_severity").value = "Near Miss";
-  byId("incident_edit_liftType").value = "";
-  renderCauseCheckboxes("incident_edit_immediate", immediateCauseOptions, []);
-  renderCauseCheckboxes("incident_edit_basic", basicCauseOptions, []);
+  const card = document.getElementById('incidentCard');
+  card.dataset.mode = 'add';
+  card.dataset.editId = '';
+  document.getElementById('incidentCardTitle').textContent = 'Add Incident Record';
+  document.getElementById('incidentCardSubtitle').textContent = 'Enter incident information for the selected company.';
+  document.getElementById('incidentSaveBtn').textContent = 'Add Incident Record';
+  ["incident_date","incident_number","incident_employee","incident_location","incident_unit","incident_description","incident_proof_desc","incident_immediate_notes","incident_basic_notes","incident_tags","incident_proof_by","incident_proof_date"].forEach(id => byId(id).value = "");
+  byId("incident_severity").value = "Near Miss";
+  byId("incident_liftType").value = "";
+  renderCauseCheckboxes("incident_immediate", immediateCauseOptions, []);
+  renderCauseCheckboxes("incident_basic", basicCauseOptions, []);
   populateWitnessDropdowns([]);
-  byId("incident_edit_photos_present").value = "No";
-  byId("incident_edit_video_present").value = "No";
-  clearPortalFilePicker("incident_edit_upload_files","incident_edit_upload_preview");
+  byId("incident_photos_present").value = "No";
+  byId("incident_video_present").value = "No";
+  clearPortalFilePicker("incident_upload_files","incident_upload_preview");
   byId("incident_existing_uploads").innerHTML = "";
+  clearSnapshot('incidentCard');
 }
 async function saveEditedIncident(){
   try{
-    const index = Number((byId("incident_edit_index")||{}).value); if(Number.isNaN(index) || !db.incidents[index]){ alert("Select an incident row first."); return; }
-    const oldState = JSON.parse(JSON.stringify(db.incidents[index]));
-    const existing = db.incidents[index].uploads || [];
-    const added = [];
-    for(const file of Array.from((byId("incident_edit_upload_files")||{}).files || [])){ added.push(await storePortalFile(file)); }
-    db.incidents[index] = {
-      ...db.incidents[index],
-      date:(byId("incident_edit_date")||{}).value,
-      incidentNumber:((byId("incident_edit_number")||{}).value||"").trim(),
-      employee:((byId("incident_edit_employee")||{}).value||"").trim(),
-      location:((byId("incident_edit_location")||{}).value||"").trim(),
-      unit:((byId("incident_edit_unit")||{}).value||"").trim(),
-      severity:(byId("incident_edit_severity")||{}).value,
-      liftType:((byId("incident_edit_liftType")||{}).value||"").trim(),
-      description:(byId("incident_edit_description")||{}).value,
-      photosPresent:(byId("incident_edit_photos_present")||{}).value,
-      videoPresent:(byId("incident_edit_video_present")||{}).value,
-      proofDescription:((byId("incident_edit_proof_desc")||{}).value||"").trim(),
-      immediateCause:getCheckedValues("incident_edit_immediate"),
-      immediateCauseNotes:((byId("incident_edit_immediate_notes")||{}).value||"").trim(),
-      basicCause:getCheckedValues("incident_edit_basic"),
-      basicCauseNotes:((byId("incident_edit_basic_notes")||{}).value||"").trim(),
-      issueTags:splitIssueTags((byId("incident_edit_tags")||{}).value),
-      witnesses:getEditedWitnesses(),
-      addedBy:((byId("incident_edit_proof_by")||{}).value||"").trim(),
-      dateAdded:(byId("incident_edit_proof_date")||{}).value,
-      uploads:[...existing, ...added]
-    };
-    persistLocalSnapshot();
-    if(!FEATURE_FLAGS.write_enabled_incidents){
-      showToast("Read-only mode. Changes saved locally only.", "info");
-      clearIncidentEditor(); rebuildAll();
-      return;
-    }
-    const incident = db.incidents[index];
-    const fields = {
-      Title: incident.incidentNumber || "Incident",
-      Company: incident.company,
-      "Incident_x0020_ID": incident.incidentNumber,
-      Date: incident.date,
-      "Employee_x0020__x0028_Injured_x0029_": incident.employee,
-      Location: incident.location,
-      Unit: incident.unit,
-      "Investigation_x0020_Status": incident.severity,
-      LiftType: incident.liftType,
-      Description: incident.description,
-      PhotosPresent: incident.photosPresent,
-      VideoPresent: incident.videoPresent,
-      ProofDescription: incident.proofDescription,
-      "Immediate_x0020_Causes": (incident.immediateCause || []).join(", "),
-      ImmediateCauseNotes: incident.immediateCauseNotes,
-      "Basic_x0020_Causes": (incident.basicCause || []).join(", "),
-      BasicCauseNotes: incident.basicCauseNotes,
-      IssueTags: (incident.issueTags || []).join(", "),
-      Witnesses: (incident.witnesses || []).join(", "),
-      "Reported_x0020_By": incident.addedBy,
-      DateAdded: incident.dateAdded
-    };
-    if(!incident.id){
-      const result = await graphCreateItem("incidents", fields);
-      incident.id = result.id;
-      incident.etag = result.etag;
+    const card = document.getElementById('incidentCard');
+    const mode = card.dataset.mode || 'add';
+    if(mode === 'add'){
+      const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
+      const uploads = [];
+      for(const file of Array.from(byId("incident_upload_files").files || [])){ uploads.push(await storePortalFile(file)); }
+      const actions=collectActionBlocks("incident").map(a => ({...a, due:a.due||addDays((byId("incident_date")||{}).value||todayISO(),2)}));
+      const dateVal = (byId("incident_date")||{}).value;
+      const incidentNumber = ((byId("incident_number")||{}).value||"").trim() || await nextIncidentNumber(company, dateVal);
+      if(!db.incidents) db.incidents=[];
+      const entity = {
+        id: "incident_" + Date.now(),
+        company,
+        incidentNumber,
+        date:dateVal,
+        employee:((byId("incident_employee")||{}).value||"").trim(),
+        location:((byId("incident_location")||{}).value||"").trim(),
+        unit:((byId("incident_unit")||{}).value||"").trim(),
+        severity:(byId("incident_severity")||{}).value,
+        liftType:((byId("incident_liftType")||{}).value||"").trim(),
+        description:(byId("incident_description")||{}).value,
+        photosPresent:(byId("incident_photos_present")||{}).value,
+        videoPresent:(byId("incident_video_present")||{}).value,
+        proofDescription:((byId("incident_proof_desc")||{}).value||"").trim(),
+        immediateCause:getCheckedValues("incident_immediate"),
+        immediateCauseNotes:((byId("incident_immediate_notes")||{}).value||"").trim(),
+        basicCause:getCheckedValues("incident_basic"),
+        basicCauseNotes:((byId("incident_basic_notes")||{}).value||"").trim(),
+        issueTags:splitIssueTags((byId("incident_tags")||{}).value),
+        witnesses:getSelectedWitnesses(),
+        addedBy:((byId("incident_proof_by")||{}).value||"").trim(),
+        dateAdded:(byId("incident_proof_date")||{}).value,
+        uploads,
+        actions
+      };
+      db.incidents.push(entity);
+      clearActionBlocks("incident"); clearPortalFilePicker("incident_upload_files","incident_upload_preview"); setIncidentDefaultDue(); clearIncidentEditor();
+      const fields = {Title: entity.incidentNumber || "Incident", Company: entity.company, "Incident_x0020_ID": entity.incidentNumber, Date: entity.date, "Employee_x0020__x0028_Injured_x0029_": entity.employee, Location: entity.location, Unit: entity.unit, "Investigation_x0020_Status": entity.severity, LiftType: entity.liftType, Description: entity.description, PhotosPresent: entity.photosPresent, VideoPresent: entity.videoPresent, ProofDescription: entity.proofDescription, "Immediate_x0020_Causes": (entity.immediateCause || []).join(", "), ImmediateCauseNotes: entity.immediateCauseNotes, "Basic_x0020_Causes": (entity.basicCause || []).join(", "), BasicCauseNotes: entity.basicCauseNotes, IssueTags: (entity.issueTags || []).join(", "), Witnesses: (entity.witnesses || []).join(", "), "Reported_x0020_By": entity.addedBy, DateAdded: entity.dateAdded};
+      await syncCreateToSP("incidents", "write_enabled_incidents", entity, fields);
+      rebuildAll();
     } else {
-      await graphUpdateItem("incidents", incident.id, fields, incident.etag);
+      if(!db.incidents){ db.incidents = []; }
+      const editId = card.dataset.editId;
+      let index = -1;
+      if(!isNaN(editId)){
+        index = Number(editId);
+      } else {
+        const rec = db.incidents.find(x => x.id === editId || x.guid === editId);
+        if(rec) index = db.incidents.indexOf(rec);
+      }
+      if(index < 0 || !db.incidents[index]){
+        alert("Select an incident row first.");
+        return;
+      }
+      const oldState = JSON.parse(JSON.stringify(db.incidents[index]));
+      const existing = db.incidents[index].uploads || [];
+      const added = [];
+      for(const file of Array.from(byId("incident_upload_files").files || [])){ added.push(await storePortalFile(file)); }
+      db.incidents[index] = {
+        ...db.incidents[index],
+        date:(byId("incident_date")||{}).value,
+        incidentNumber:((byId("incident_number")||{}).value||"").trim(),
+        employee:((byId("incident_employee")||{}).value||"").trim(),
+        location:((byId("incident_location")||{}).value||"").trim(),
+        unit:((byId("incident_unit")||{}).value||"").trim(),
+        severity:(byId("incident_severity")||{}).value,
+        liftType:((byId("incident_liftType")||{}).value||"").trim(),
+        description:(byId("incident_description")||{}).value,
+        photosPresent:(byId("incident_photos_present")||{}).value,
+        videoPresent:(byId("incident_video_present")||{}).value,
+        proofDescription:((byId("incident_proof_desc")||{}).value||"").trim(),
+        immediateCause:getCheckedValues("incident_immediate"),
+        immediateCauseNotes:((byId("incident_immediate_notes")||{}).value||"").trim(),
+        basicCause:getCheckedValues("incident_basic"),
+        basicCauseNotes:((byId("incident_basic_notes")||{}).value||"").trim(),
+        issueTags:splitIssueTags((byId("incident_tags")||{}).value),
+        witnesses:getSelectedWitnesses(),
+        addedBy:((byId("incident_proof_by")||{}).value||"").trim(),
+        dateAdded:(byId("incident_proof_date")||{}).value,
+        uploads:[...existing, ...added]
+      };
+      persistLocalSnapshot();
+      if(!FEATURE_FLAGS.write_enabled_incidents){
+        showToast("Read-only mode. Changes saved locally only.", "info");
+        clearIncidentEditor();
+        rebuildAll();
+        return;
+      }
+      const incident = db.incidents[index];
+      const fields = {
+        Title: incident.incidentNumber || "Incident",
+        Company: incident.company,
+        "Incident_x0020_ID": incident.incidentNumber,
+        Date: incident.date,
+        "Employee_x0020__x0028_Injured_x0029_": incident.employee,
+        Location: incident.location,
+        Unit: incident.unit,
+        "Investigation_x0020_Status": incident.severity,
+        LiftType: incident.liftType,
+        Description: incident.description,
+        PhotosPresent: incident.photosPresent,
+        VideoPresent: incident.videoPresent,
+        ProofDescription: incident.proofDescription,
+        "Immediate_x0020_Causes": (incident.immediateCause || []).join(", "),
+        ImmediateCauseNotes: incident.immediateCauseNotes,
+        "Basic_x0020_Causes": (incident.basicCause || []).join(", "),
+        BasicCauseNotes: incident.basicCauseNotes,
+        IssueTags: (incident.issueTags || []).join(", "),
+        Witnesses: (incident.witnesses || []).join(", "),
+        "Reported_x0020_By": incident.addedBy,
+        DateAdded: incident.dateAdded
+      };
+      if(!incident.id){
+        const result = await graphCreateItem("incidents", fields);
+        incident.id = result.id;
+        incident.etag = result.etag;
+      } else {
+        await graphUpdateItem("incidents", incident.id, fields, incident.etag);
+      }
+      logAuditEntry({user: "current_user", list: "incidents", itemId: incident.id, action: "UPDATE", delta: fields});
+      showToast("✓ Saved to SharePoint", "success");
+      clearIncidentEditor();
+      rebuildAll();
     }
-    logAuditEntry({user: "current_user", list: "incidents", itemId: incident.id, action: "UPDATE", delta: fields});
-    showToast("✓ Saved to SharePoint", "success");
-    clearIncidentEditor(); rebuildAll();
-  } catch(e){
-    const index = Number((byId("incident_edit_index")||{}).value);
-    if(db.incidents[index]){
-      db.incidents[index] = oldState;
-    }
-    showToast(`Sync failed: ${e.message || e.code}`, "error");
-    clearIncidentEditor(); rebuildAll();
+  } catch(err){
+    console.error("Write error:", err);
+    showToast(`Sync failed: ${err.message || err.code}`, "error");
   }
 }
 
@@ -6035,7 +6085,7 @@ function renderAll(){
   renderMaintLocations();
   renderMaintRecords();
   renderTable(byId("inspectionTable"), ["Company","Date","Crew","Location","Inspector","Findings","Proof Present","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], inspections.map((x,i) => [esc(x.company), esc(x.date), esc(x.crew), esc(x.location), esc(x.inspector), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editInspection('${x.id || x.guid || i}')">Edit</button>`]));
-  renderTable(byId("incidentTable"), ["Company","Incident #","Date","Employee","Witnesses","Location","Severity","Immediate Causes","Basic Causes","Issue Tags","Description","Photos","Video","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], incidents.map((x,i) => [esc(x.company), esc(x.incidentNumber || ""), esc(x.date), esc(x.employee), esc((x.witnesses || []).join(", ")), esc(x.location), statusPill(x.severity), esc((Array.isArray(x.immediateCause) ? x.immediateCause : (x.immediateCause ? [x.immediateCause] : [])).join(", ")), esc((Array.isArray(x.basicCause) ? x.basicCause : (x.basicCause ? [x.basicCause] : [])).join(", ")), esc((x.issueTags || []).join(", ")), esc(x.description), statusPill(x.photosPresent), statusPill(x.videoPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editIncident(${i})">Edit</button>`]));
+  renderTable(byId("incidentTable"), ["Company","Incident #","Date","Employee","Witnesses","Location","Severity","Immediate Causes","Basic Causes","Issue Tags","Description","Photos","Video","Proof Description","Added By","Date Added","Uploads","Actions","Edit"], incidents.map((x,i) => [esc(x.company), esc(x.incidentNumber || ""), esc(x.date), esc(x.employee), esc((x.witnesses || []).join(", ")), esc(x.location), statusPill(x.severity), esc((Array.isArray(x.immediateCause) ? x.immediateCause : (x.immediateCause ? [x.immediateCause] : [])).join(", ")), esc((Array.isArray(x.basicCause) ? x.basicCause : (x.basicCause ? [x.basicCause] : [])).join(", ")), esc((x.issueTags || []).join(", ")), esc(x.description), statusPill(x.photosPresent), statusPill(x.videoPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), esc((x.actions||[]).map(a=>a.action).join(" | ")), `<button class="btn secondary" onclick="editIncident('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("hazardTable"), ["Company","Date","Task","Location","Leader","Hazards","Controls","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], hazard.map((x,i) => [esc(x.company), esc(x.date), esc(x.task), esc(x.location), esc(x.leader), esc(x.hazards), esc(x.controls), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editHazard(${i})">Edit</button>`]));
   renderTable(byId("committeeTable"), ["Company","Name","Role","Next Meeting Due","Notes","Proof Present","Proof Description","Added By","Date Added","Uploads","Edit"], committee.map((x,i) => [esc(x.company), esc(x.name), esc(x.role), esc(x.due), esc(x.notes), statusPill(x.proofPresent), esc(x.proofDescription), esc(x.addedBy), esc(x.dateAdded), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editCommittee(${i})">Edit</button>`]));
   renderTable(byId("caTable"), ["Company","Source","Reference","Priority","Assigned","Due","Status","Action","Completion","Evidence Tracker","Verification","Escalation"], reminders.map((x,i) => [
