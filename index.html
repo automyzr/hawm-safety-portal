@@ -133,6 +133,13 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     <button class="nav-btn" data-page="ca_closed">Closed & Verified</button>
   </aside>
 
+  <dialog id="discardDialog">
+    <h3>Discard unsaved changes?</h3>
+    <p>You have unsaved data in this form.</p>
+    <button onclick="confirmDiscard(true)">Discard</button>
+    <button onclick="confirmDiscard(false)">Cancel</button>
+  </dialog>
+
   <main class="main">
     <div class="page-banner">
   <div class="page-banner-inner">
@@ -1310,6 +1317,32 @@ function toArray(v){
     return v.split(/;#|,|\n/).map(x => x.trim()).filter(Boolean);
   }
   return [v].filter(Boolean);
+}
+let _pendingEditCallback = null;
+function confirmDiscard(go){
+  document.getElementById('discardDialog').close();
+  if(go && _pendingEditCallback) _pendingEditCallback();
+  _pendingEditCallback = null;
+}
+function isCardDirty(cardId){
+  const card = document.getElementById(cardId);
+  if(!card) return false;
+  const baseline = card.dataset.baseline ? JSON.parse(card.dataset.baseline) : {};
+  const inputs = card.querySelectorAll('input,select,textarea');
+  for(const el of inputs){
+    const k = el.id || el.name;
+    if(!k) continue;
+    if((baseline[k] || '') !== (el.value || '')) return true;
+  }
+  return false;
+}
+function snapshotCard(cardId){
+  const card = document.getElementById(cardId);
+  if(!card) return;
+  const inputs = card.querySelectorAll('input,select,textarea');
+  const snap = {};
+  inputs.forEach(el => { const k=el.id||el.name; if(k) snap[k]=el.value||''; });
+  card.dataset.baseline = JSON.stringify(snap);
 }
 function fieldValue(fields, keys, fallback=""){
   for(const key of keys){
