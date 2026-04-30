@@ -2519,19 +2519,23 @@ async function storeTrainingCertificate(file){
   }
 }
 async function openTrainingCertificate(id, name){
+  // Skip non-synced placeholders (local-*, pending-*) gracefully
+  if(!id || /^(local|pending)-/.test(String(id))){
+    showToast("File not yet synced to SharePoint.", "info");
+    return;
+  }
   try {
-    const blob = await downloadFileFromLibrary(id);
-    if(!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const siteId = await getGraphSiteId();
+    // Fetch the drive item to get its SharePoint webUrl
+    const item = await graphCall(`/sites/${siteId}/drive/items/${id}?$select=id,name,webUrl`);
+    if(!item || !item.webUrl){
+      showToast("Unable to open file in SharePoint.", "error");
+      return;
+    }
+    window.open(item.webUrl, "_blank", "noopener,noreferrer");
   } catch(error){
-    console.error("Certificate download error:", error);
+    console.error("Open in SharePoint failed:", error);
+    showToast("Could not open file in SharePoint.", "error");
   }
 }
 async function storePortalFile(file){
@@ -2553,19 +2557,23 @@ async function storePortalFile(file){
   }
 }
 async function openPortalStoredFile(id, name){
+  // Skip non-synced placeholders (local-*, pending-*) gracefully
+  if(!id || /^(local|pending)-/.test(String(id))){
+    showToast("File not yet synced to SharePoint.", "info");
+    return;
+  }
   try {
-    const blob = await downloadFileFromLibrary(id);
-    if(!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const siteId = await getGraphSiteId();
+    // Fetch the drive item to get its SharePoint webUrl
+    const item = await graphCall(`/sites/${siteId}/drive/items/${id}?$select=id,name,webUrl`);
+    if(!item || !item.webUrl){
+      showToast("Unable to open file in SharePoint.", "error");
+      return;
+    }
+    window.open(item.webUrl, "_blank", "noopener,noreferrer");
   } catch(error){
-    console.error("File download error:", error);
+    console.error("Open in SharePoint failed:", error);
+    showToast("Could not open file in SharePoint.", "error");
   }
 }
 async function confirmDeletePortalFile(fileId, fileName){
