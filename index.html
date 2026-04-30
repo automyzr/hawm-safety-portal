@@ -5069,10 +5069,10 @@ function renderArchivedDocuments(){
 
 function renderEditRolePicker(selectedRoles=[]){
   const company = selectedCompany()==="All Companies" ? "Heave Away" : selectedCompany();
-  byId("personEditRolePicker").innerHTML = (companyRoles[company]||[]).map(r=>`<label><input type="checkbox" value="${esc(r)}" ${selectedRoles.includes(r) ? "checked" : ""}> ${esc(r)}</label>`).join("");
+  byId("rolePicker").innerHTML = (companyRoles[company]||[]).map(r=>`<label><input type="checkbox" value="${esc(r)}" ${selectedRoles.includes(r) ? "checked" : ""}> ${esc(r)}</label>`).join("");
 }
 function getEditedRoles(){
-  return Array.from(byId("personEditRolePicker").querySelectorAll("input:checked")).map(x=>x.value);
+  return Array.from(byId("rolePicker").querySelectorAll("input:checked")).map(x=>x.value);
 }
 function editPerson(id){
   const card = document.getElementById('personCard');
