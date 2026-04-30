@@ -315,7 +315,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <button class="btn secondary" onclick="clearTrainingEditor()">New / Clear</button>
         </div>
       </div>
-      <div class="card"><h3>Completed Training Table</h3><div class="table-wrap"><table id="trainingTable"></table></div></div>
+      <div class="card"><h3>Completed Training Table</h3><div class="field"><label>Filter by Employee</label><select id="training_filter_employee" class="people-select" onchange="filterTrainingTable()"><option value="">Show All Employees</option></select></div><div class="table-wrap"><table id="trainingTable"></table></div></div>
       <div class="card"><h3>Training Gaps</h3><div class="table-wrap"><table id="trainingGapTable"></table></div></div>
     </section>
 
@@ -883,7 +883,7 @@ async function nextIncidentNumber(company, dateStr){
     }
   }
 
-  return `${companyIncidentPrefix(company)}-${year}-${String(newValue).padStart(3,"0")}`;
+  return `${companyIncidentPrefix(company)}-INC-${year}-${String(newValue).padStart(3,"0")}`;
 }
 function splitIssueTags(text){
   return (text || "").split(",").map(x => x.trim()).filter(Boolean);
@@ -3351,6 +3351,24 @@ function populateAnalyticsDropdowns(){
     if(current && Array.from(empSel.options).some(o => o.value === current)) empSel.value = current;
   }
 }
+function populateTrainingFilterDropdown(){
+  const training = filterByCompany(db.training || []);
+  const uniqueEmployees = [...new Set(training.filter(t => t.employee).map(t => t.employee))].sort();
+  const filterSel = byId("training_filter_employee");
+  if(filterSel){
+    const current = filterSel.value;
+    filterSel.innerHTML = '<option value="">Show All Employees</option>' + uniqueEmployees.map(emp => `<option value="${esc(emp)}">${esc(emp)}</option>`).join("");
+    if(current && Array.from(filterSel.options).some(o => o.value === current)) filterSel.value = current;
+  }
+}
+function filterTrainingTable(){
+  const selectedPerson = byId("training_filter_employee")?.value || "";
+  let training = filterByCompany(db.training || []);
+  if(selectedPerson && selectedPerson !== ""){
+    training = training.filter(t => t.employee === selectedPerson);
+  }
+  renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining('${x.id || x.guid || i}')">Edit</button>`]));
+}
 function hoursBetween(dateStrA, dateStrB){
   if(!dateStrA || !dateStrB) return null;
   const a = new Date(dateStrA + "T00:00:00");
@@ -4115,11 +4133,15 @@ function renderLifts(){
   ]));
 }
 
-function computeLiftExposureMetrics(optionalFilters){
+function computeLiftExposureMetrics(personFilter){
   if(!db.lifts) db.lifts = [];
   if(!db.incidents) db.incidents = [];
-  const lifts = optionalFilters ? db.lifts.filter(optionalFilters) : db.lifts;
-  const incidents = optionalFilters ? db.incidents.filter(optionalFilters) : db.incidents;
+  let lifts = filterByCompany(db.lifts);
+  let incidents = filterByCompany(db.incidents || []);
+  if(personFilter && personFilter !== ""){
+    lifts = lifts.filter(l => l.operator === personFilter);
+    incidents = incidents.filter(i => i.employee === personFilter);
+  }
   const incidentsWithLiftType = incidents.filter(inc => inc.liftType && inc.liftType.trim());
   const rollOffLifts = lifts.filter(l => l.liftType === "Roll Off");
   const forkTruckLifts = lifts.filter(l => l.liftType === "Fork Truck");
@@ -4140,8 +4162,11 @@ function computeLiftExposureMetrics(optionalFilters){
   };
 }
 
-function computeIncidentsByPerson(filters){
-  const incidents = filterByCompany(db.incidents || []);
+function computeIncidentsByPerson(personFilter){
+  let incidents = filterByCompany(db.incidents || []);
+  if(personFilter && personFilter !== ""){
+    incidents = incidents.filter(i => i.employee === personFilter);
+  }
   const personMap = {};
   incidents.forEach(i => {
     if(i.employee) personMap[i.employee] = (personMap[i.employee] || 0) + 1;
@@ -4149,8 +4174,11 @@ function computeIncidentsByPerson(filters){
   return Object.entries(personMap).map(([person, count]) => ({person, count})).sort((a,b) => b.count - a.count);
 }
 
-function computeDefectsByPerson(filters){
-  const defects = filterByCompany(db.vehicleInspections || []);
+function computeDefectsByPerson(personFilter){
+  let defects = filterByCompany(db.vehicleInspections || []);
+  if(personFilter && personFilter !== ""){
+    defects = defects.filter(d => d.reportedBy === personFilter);
+  }
   const personMap = {};
   defects.forEach(d => {
     const reporter = d.reportedBy || "";
@@ -4159,9 +4187,12 @@ function computeDefectsByPerson(filters){
   return Object.entries(personMap).map(([person, count]) => ({person, count})).sort((a,b) => b.count - a.count);
 }
 
-function computeCausesByCount(kind){
+function computeCausesByCount(kind, personFilter){
   if(!kind || (kind !== 'immediate' && kind !== 'basic')) return [];
-  const incidents = filterByCompany(db.incidents || []);
+  let incidents = filterByCompany(db.incidents || []);
+  if(personFilter && personFilter !== ""){
+    incidents = incidents.filter(i => i.employee === personFilter);
+  }
   const causeMap = {};
   incidents.forEach(i => {
     const fieldName = kind === 'immediate' ? 'immediateCause' : 'basicCause';
@@ -4173,8 +4204,11 @@ function computeCausesByCount(kind){
   return Object.entries(causeMap).map(([cause, count]) => ({cause, count})).sort((a,b) => b.count - a.count);
 }
 
-function computeCA48Performance(filters){
-  const reminders = getReminderRows();
+function computeCA48Performance(personFilter){
+  let reminders = getReminderRows();
+  if(personFilter && personFilter !== ""){
+    reminders = reminders.filter(r => r.assigned === personFilter);
+  }
   const closedAssigned = reminders.filter(a => a.status === "Closed" && a.completionDate);
   const closedUnder48h = closedAssigned.filter(a => {
     const hrs = hoursBetween(a.createdDate || a.sourceDate || "", a.completionDate || "");
@@ -4198,13 +4232,13 @@ function renderAnalytics(){
   const liftTypeVal = byId("analytics_liftType")?.value || "";
   const baselineVal = byId("analytics_baselineDate")?.value || "";
 
-  const incidentsByPerson = computeIncidentsByPerson();
-  const defectsByPerson = computeDefectsByPerson();
-  const immediateByCount = computeCausesByCount('immediate');
-  const basicByCount = computeCausesByCount('basic');
-  const ca48perf = computeCA48Performance();
+  const incidentsByPerson = computeIncidentsByPerson(employeeVal);
+  const defectsByPerson = computeDefectsByPerson(employeeVal);
+  const immediateByCount = computeCausesByCount('immediate', employeeVal);
+  const basicByCount = computeCausesByCount('basic', employeeVal);
+  const ca48perf = computeCA48Performance(employeeVal);
   const baselineData = computeBaselineImprovement(baselineVal);
-  const liftMetrics = computeLiftExposureMetrics();
+  const liftMetrics = computeLiftExposureMetrics(employeeVal);
 
   const incidentLines = incidentsByPerson.slice(0, 10).map(x => `${esc(x.person)} = ${esc(x.count)}`);
   const defectLines = defectsByPerson.slice(0, 10).map(x => `${esc(x.person)} = ${esc(x.count)}`);
@@ -6427,6 +6461,7 @@ function renderAll(){
     populateWitnessDropdowns([]);
     populateEmployeeProfileDropdown();
     populateAnalyticsDropdowns();
+    populateTrainingFilterDropdown();
   } catch(e) { console.error("renderAll dropdowns error:",e); }
   const people=filterByCompany(db.people), training=filterByCompany(db.training), docs=filterByCompany(db.documents).filter(d => d.status === "Active" || !d.status), manual=filterByCompany(db.manual), cor=filterByCompany(db.cor), toolbox=filterByCompany(db.toolbox), vehicleInspections=filterByCompany(db.vehicleInspections), inspections=filterByCompany(db.inspections), incidents=filterByCompany(db.incidents), hazard=filterByCompany(db.hazard), committee=filterByCompany(db.committee), reminders=getReminderRows(), gaps=getTrainingGaps().filter(x => selectedCompany()==="All Companies" ? true : x.company===selectedCompany());
 
