@@ -2643,22 +2643,27 @@ async function runMigration(){
       const localItems = localDb[entityKey];
       if(!Array.isArray(localItems) || localItems.length === 0) continue;
       const spItems = db[entityKey] || [];
-      const spIds = new Set(spItems.map(item => item.id));
+      const spSourceIds = new Set(spItems.map(item => getEntitySourceId(item)).filter(Boolean));
       for(const item of localItems){
-        if(!item.id || spIds.has(item.id)){
-          console.log(`Migration: skipping ${entityKey} item (already in SP or no ID)`, item);
+        if(item?.etag && !item?.sourceId){
+          console.log(`Migration: skipping hydrated ${entityKey} item without SourceId`, item);
+          continue;
+        }
+        const sourceId = getEntitySourceId(item);
+        if(!sourceId || spSourceIds.has(sourceId)){
+          console.log(`Migration: skipping ${entityKey} item (already in SP or no SourceId)`, item);
           continue;
         }
         try {
           if(!FEATURE_FLAGS['write_enabled_'+listSlug]){ continue; }
-          const fields = { ...item };
-          delete fields.id;
+          const fields = buildSeedFields(entityKey, { ...item, sourceId });
           const result = await graphCreateItem(listSlug, fields);
+          spSourceIds.add(sourceId);
           migratedCount++;
-          console.log(`Migrated 1 item: ${entityKey} ${item.id}`);
+          console.log(`Migrated 1 item: ${entityKey} ${sourceId}`);
         } catch(e){
-          failedItems.push({ entity: entityKey, id: item.id, error: e.message });
-          console.warn(`Failed to migrate ${entityKey} ${item.id}:`, e);
+          failedItems.push({ entity: entityKey, id: sourceId, error: e.message });
+          console.warn(`Failed to migrate ${entityKey} ${sourceId}:`, e);
         }
       }
     }
