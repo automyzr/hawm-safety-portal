@@ -522,6 +522,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Added By</label><input id="insp_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="insp_proof_date" type="date"></div>
           <div class="field span-4"><label>Inspection Uploads</label><input id="insp_upload_files" type="file" multiple onchange="showSelectedPortalFiles('insp_upload_files','insp_upload_preview')"><div id="insp_upload_preview" class="file-preview">No files selected.</div><div id="insp_existing_uploads" class="attachment-list"></div></div>
+          <div class="field"><label>CA Assigned To</label><select id="inspection_ca_assigned" class="people-select"></select></div>
         </div>
         <div style="margin-top:16px"><h4>Corrective Actions (up to 7)</h4></div>
         <div id="inspectionActionBlocks" class="grid"></div>
@@ -559,6 +560,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field"><label>Added By</label><input id="incident_proof_by"></div>
           <div class="field"><label>Date Added</label><input id="incident_proof_date" type="date"></div>
           <div class="field span-4"><label>Incident Uploads</label><input id="incident_upload_files" type="file" multiple onchange="showSelectedPortalFiles('incident_upload_files','incident_upload_preview')"><div id="incident_upload_preview" class="file-preview">No files selected.</div><div id="incident_existing_uploads" class="attachment-list"></div></div>
+          <div class="field"><label>CA Assigned To</label><select id="incident_ca_assigned" class="people-select"></select></div>
         </div>
         <div style="margin-top:16px"><h4>Corrective Actions (up to 7)</h4><div class="small">All incident actions are High priority and due within 48 hours.</div></div>
         <div id="incidentActionBlocks" class="grid"></div>
@@ -5667,6 +5669,15 @@ async function addIncident(){
     clearActionBlocks("incident"); clearPortalFilePicker("incident_upload_files","incident_upload_preview"); setIncidentDefaultDue(); rebuildAll();
     const fields = buildIncidentFields(entity);
     await syncCreateToSP("incidents", "write_enabled_incidents", entity, fields);
+    if(entity.actions && entity.actions.length > 0){
+      if(!db.correctiveActions) db.correctiveActions=[];
+      const assignedTo=byId("incident_ca_assigned")?.value?.trim() || "";
+      entity.actions.forEach((a, idx) => {
+        const ca={id:"ca_"+Date.now()+"_"+idx, sourceType:"Incident", reference:entity.incidentNumber+"_CA_"+(idx+1), action:a.action, assigned:assignedTo || a.assigned, priority:"High", status:"Open", source:entity.id, company:selectedCompany(), createdDate:new Date().toISOString().split("T")[0], due:a.due, ongoing:a.ongoing};
+        db.correctiveActions.push(ca);
+      });
+      saveDB();
+    }
   } catch(e){ console.error("addIncident error:",e); alert("Failed to add incident: "+e.message); }
 }
 async function addHazard(){
@@ -5752,6 +5763,15 @@ async function saveEditedInspection(){
       await syncCreateToSP("inspections", "write_enabled_inspections", entity, fields);
       db.inspections.push(entity);
       clearActionBlocks("inspection"); clearPortalFilePicker("insp_upload_files","insp_upload_preview"); clearInspectionEditor();
+      if(entity.actions && entity.actions.length > 0){
+        if(!db.correctiveActions) db.correctiveActions=[];
+        const assignedTo=byId("inspection_ca_assigned")?.value?.trim() || "";
+        entity.actions.forEach((a, idx) => {
+          const ca={id:"ca_"+Date.now()+"_"+idx, sourceType:"Inspection", reference:entity.location+"_INS_CA_"+(idx+1), action:a.action, assigned:assignedTo || a.assigned, priority:"Medium", status:"Open", source:entity.id, company:selectedCompany(), createdDate:new Date().toISOString().split("T")[0], due:a.due, ongoing:a.ongoing};
+          db.correctiveActions.push(ca);
+        });
+        saveDB();
+      }
       rebuildAll();
     } else {
       if(!db.inspections){ db.inspections = []; }
@@ -5917,6 +5937,15 @@ async function saveEditedIncident(){
       clearActionBlocks("incident"); clearPortalFilePicker("incident_upload_files","incident_upload_preview"); setIncidentDefaultDue(); clearIncidentEditor();
       const fields = buildIncidentFields(entity);
       await syncCreateToSP("incidents", "write_enabled_incidents", entity, fields);
+      if(entity.actions && entity.actions.length > 0){
+        if(!db.correctiveActions) db.correctiveActions=[];
+        const assignedTo=byId("incident_ca_assigned")?.value?.trim() || "";
+        entity.actions.forEach((a, idx) => {
+          const ca={id:"ca_"+Date.now()+"_"+idx, sourceType:"Incident", reference:entity.incidentNumber+"_CA_"+(idx+1), action:a.action, assigned:assignedTo || a.assigned, priority:"High", status:"Open", source:entity.id, company:selectedCompany(), createdDate:new Date().toISOString().split("T")[0], due:a.due, ongoing:a.ongoing};
+          db.correctiveActions.push(ca);
+        });
+        saveDB();
+      }
       rebuildAll();
     } else {
       if(!db.incidents){ db.incidents = []; }
@@ -6344,6 +6373,17 @@ function tryVerifyCA(index){
   if(!(r.completionDate && r.completionNotes && r.evidencePresent==="Yes" && r.evidenceDescription && r.verifiedBy)){ alert("Strict closeout: add completion date, completion notes, evidence present = Yes, evidence description, and verified by before closing."); return; }
   r.verifiedEffective=true; enforceEscalation(); saveDB(); renderAll();
 }
+function escalateCA(index){
+  const rec=getReminderRows()[index]; if(!rec) return;
+  const timestamp=new Date().toISOString().split("T")[0]+" "+new Date().toISOString().split("T")[1].substring(0,8);
+  const subject=`Escalating overdue CA #${encodeURIComponent(rec.reference || "unknown")}`;
+  const body=`Escalating overdue CA #${rec.reference}: ${rec.action}. Source: ${rec.sourceType} ${rec.source}. Assigned: ${rec.assigned}. Status: ${rec.status}.`;
+  const mailtoLink=`mailto:nickie@heave-away.ca?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const actualIndex=db.correctiveActions.findIndex(x => x.company===rec.company && x.reference===rec.reference && x.source===rec.source);
+  db.correctiveActions[actualIndex].escalation=timestamp;
+  saveDB(); renderAll();
+  window.location.href=mailtoLink;
+}
 function uploadCAEvidence(caIndex){
   let input = byId('caEvidenceUpload_' + caIndex);
   if(!input){
@@ -6512,7 +6552,7 @@ function renderAll(){
     `<input type="date" value="${esc(x.completionDate||'')}" onchange="updateCA(${i},'completionDate',this.value)"><br><textarea placeholder="Completion notes" onchange="updateCA(${i},'completionNotes',this.value)">${esc(x.completionNotes||'')}</textarea>`,
     `<select onchange="updateCA(${i},'evidencePresent',this.value)"><option ${x.evidencePresent==='No'?'selected':''}>No</option><option ${x.evidencePresent==='Yes'?'selected':''}>Yes</option></select><br><input placeholder="Evidence description" value="${esc(x.evidenceDescription||'')}" onchange="updateCA(${i},'evidenceDescription',this.value)"><br><input placeholder="Added by" value="${esc(x.evidenceAddedBy||'')}" onchange="updateCA(${i},'evidenceAddedBy',this.value)"><br><input type="date" value="${esc(x.evidenceDateAdded||'')}" onchange="updateCA(${i},'evidenceDateAdded',this.value)"><br><button class="btn secondary small" onclick="uploadCAEvidence(${i})">Upload Evidence</button>`,
     `<input placeholder="Verified by" value="${esc(x.verifiedBy||'')}" onchange="updateCA(${i},'verifiedBy',this.value)"><br><button class="btn secondary" onclick="tryVerifyCA(${i})">Verify & Close</button>`,
-    esc(x.escalation || "")
+    x.locked ? esc(x.escalation || "") : `<button class="btn secondary" onclick="escalateCA(${i})">Escalate</button><br><small>${esc(x.escalation || "")}</small>`
   ]));
   byId("remOverdue").innerHTML = reminders.filter(r=>r.status==="Overdue").length ? `<strong>${reminders.filter(r=>r.status==="Overdue").length}</strong> item(s)` : "No overdue items.";
   byId("rem7").innerHTML = reminders.filter(r=>r.days!==null && r.days>=0 && r.days<=7 && r.status!=="Closed").length ? `<strong>${reminders.filter(r=>r.days!==null && r.days>=0 && r.days<=7 && r.status!=="Closed").length}</strong> item(s)` : "No items.";
