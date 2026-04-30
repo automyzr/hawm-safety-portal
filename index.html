@@ -1048,33 +1048,67 @@ function normalizeDerivedEntityIds(){
     });
   });
 }
+function getEntitySourceId(item){
+  return item?.sourceId || item?.id || "";
+}
+function sanitizeSharePointFields(fields){
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => {
+    if(value === undefined || value === null) return false;
+    if(typeof value === "string") return value.trim() !== "";
+    if(Array.isArray(value)) return value.length > 0;
+    return true;
+  }));
+}
+function buildDocumentFields(item){
+  return sanitizeSharePointFields({
+    Title: item.name || "Document",
+    Company: item.company || "",
+    COR_x0020_Section: item.cor || "Unmapped",
+    Document_x0020_Type: item.type || "Other",
+    Last_x0020_Review_x0020_Date: item.lastReviewed || null,
+    Next_x0020_Review_x0020_Due: item.review || null,
+    Number: item.number || "",
+    Revision: item.revision || "",
+    Owner: item.owner || "",
+    Effective: item.effective || "",
+    Status: item.status || "Active",
+    ArchivedDate: item.archivedDate || "",
+    Notes: item.notes || "",
+    ManualSection: item.manual || "",
+    FilePresent: item.filePresent || "No",
+    FileName: item.fileName || "",
+    AddedBy: item.addedBy || "",
+    DateAdded: item.dateAdded || "",
+    SourceId: getEntitySourceId(item)
+  });
+}
 function buildManualFields(item){
   const sourceId = item.sourceId || (!item.etag ? (item.id || "") : "");
-  return {
+  return sanitizeSharePointFields({
     Title: item.section || "Manual Section",
     Company: item.company || "",
     Priority: item.status || "Current",
     Content: item.content || item.document || "",
     SourceId: sourceId
-  };
+  });
 }
 function buildCorFields(item){
   const section = item.section || "COR";
   const sourceId = item.sourceId || (!item.etag ? (item.id || "") : "");
-  return {
+  return sanitizeSharePointFields({
     Title: section,
     Company: item.company || "",
     Section: section,
     Compliant: item.status === "Pass",
     Comment: item.notes || "",
-    Last_x0020_Audit_x0020_Date: item.lastAuditDate || "",
+    Last_x0020_Audit_x0020_Date: item.lastAuditDate || null,
     SourceId: sourceId
-  };
+  });
 }
 function buildIncidentFields(item){
   const incidentId = (item.incidentNumber || "").trim() || item.id || `incident_${Date.now()}`;
   const sourceId = item.sourceId || (!item.etag ? (item.id || "") : "");
-  return {
+  return sanitizeSharePointFields({
     Title: incidentId,
     Company: item.company || "",
     Incident_x0020_ID: incidentId,
@@ -1097,12 +1131,12 @@ function buildIncidentFields(item){
     Reported_x0020_By: item.addedBy || "",
     DateAdded: item.dateAdded || "",
     SourceId: sourceId
-  };
+  });
 }
 function buildCorrectiveActionFields(item){
   const caId = item.reference || item.id || `ca_${Date.now()}`;
   const sourceId = item.sourceId || (!item.etag ? (item.id || "") : "");
-  return {
+  return sanitizeSharePointFields({
     Title: caId,
     Company: item.company || "",
     CA_x0020_ID: caId,
@@ -1114,33 +1148,33 @@ function buildCorrectiveActionFields(item){
     Status: item.status || "Open",
     Status_x0020_Auto_x003f_: !!item.auto,
     Escalation_x0020_Notes: item.escalation || "",
-    Completion_x0020_Date: item.completionDate || "",
+    Completion_x0020_Date: item.completionDate || null,
     Evidence_x002f_Notes: item.completionNotes || item.evidenceDescription || item.evidence || "",
     SourceId: sourceId
-  };
+  });
 }
 function buildSeedFields(entityKey, item){
   switch(entityKey){
     case "people":
-      return {Title: item.name || "Person", Company: item.company, Department: item.department, Status: item.status, "Roles@odata.type": "Collection(Edm.String)", Roles: item.roles || [], SourceId: item.id};
+      return sanitizeSharePointFields({Title: item.name || "Person", Company: item.company, Department: item.department, Status: item.status, "Roles@odata.type": "Collection(Edm.String)", Roles: item.roles || [], SourceId: getEntitySourceId(item)});
     case "training":
-      return {Title: item.employee || "Training", Company: item.company, Employee: item.employee, Course: item.course, "Completion_x0020_Date": item.complete, "Expiry_x0020_Date": item.expiry, Notes: item.notes, Status: item.status, DocumentPresent: item.documentPresent, DocumentName: item.documentName, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+      return sanitizeSharePointFields({Title: item.employee || "Training", Company: item.company, Employee: item.employee, Course: item.course, "Completion_x0020_Date": item.complete || null, "Expiry_x0020_Date": item.expiry || null, Notes: item.notes, Status: item.status, DocumentPresent: item.documentPresent, DocumentName: item.documentName, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: getEntitySourceId(item)});
     case "documents":
-      return {Title: item.name, Company: item.company, "COR_x0020_Section": item.cor, "Document_x0020_Type": item.type, "Last_x0020_Review_x0020_Date": item.lastReviewed, "Next_x0020_Review_x0020_Due": item.review, Number: item.number, Revision: item.revision, Owner: item.owner, Effective: item.effective, Status: item.status, ArchivedDate: item.archivedDate, Notes: item.notes, ManualSection: item.manual, FilePresent: item.filePresent, FileName: item.fileName, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+      return buildDocumentFields(item);
     case "manual":
       return buildManualFields(item);
     case "cor":
       return buildCorFields(item);
     case "toolbox":
-      return {Title: item.topic || "Toolbox Talk", Company: item.company, Date: item.date, Topic: item.topic, Presenter: item.presenter, Attendees: (item.attendees || []).join(";"), Notes: item.notes, DocumentReviewed: item.documentReviewed, DocumentIndex: item.documentIndex, Duration_x0020_Minutes: (item.durationMinutes === "" || item.durationMinutes == null) ? null : Number(item.durationMinutes), SourceId: item.id};
+      return sanitizeSharePointFields({Title: item.topic || "Toolbox Talk", Company: item.company, Date: item.date || null, Topic: item.topic, Presenter: item.presenter, Attendees: (item.attendees || []).join(";"), Notes: item.notes, DocumentReviewed: item.documentReviewed, DocumentIndex: item.documentIndex, Duration_x0020_Minutes: (item.durationMinutes === "" || item.durationMinutes == null) ? null : Number(item.durationMinutes), SourceId: getEntitySourceId(item)});
     case "inspections":
-      return {Title: item.location || "Inspection", Company: item.company, "Inspection_x0020_Date": item.date, Area: item.location, Inspector: item.inspector, Findings: item.notes, Crew: item.crew, ProofPresent: item.proofPresent, ProofDescription: item.proofDescription, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+      return sanitizeSharePointFields({Title: item.location || "Inspection", Company: item.company, "Inspection_x0020_Date": item.date || null, Area: item.location, Inspector: item.inspector, Findings: item.notes, Crew: item.crew, ProofPresent: item.proofPresent, ProofDescription: item.proofDescription, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: getEntitySourceId(item)});
     case "incidents":
       return buildIncidentFields(item);
     case "correctiveActions":
       return buildCorrectiveActionFields(item);
     default:
-      return {...item, SourceId: item.id};
+      return sanitizeSharePointFields({...item, SourceId: getEntitySourceId(item)});
   }
 }
 function logAuditEntry(arg){
@@ -1975,6 +2009,7 @@ function mapPeople(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Name", "Title"])),
     department: normalizeText(fieldValue(item.fields, ["Department"])),
@@ -1986,6 +2021,7 @@ function mapTraining(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     employee: normalizeText(fieldValue(item.fields, ["Employee", "Title"])),
     course: normalizeText(fieldValue(item.fields, ["Course"])),
@@ -2004,6 +2040,7 @@ function mapDocuments(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Title"])),
     number: normalizeText(fieldValue(item.fields, ["Number", "Doc_x0020__x0023_"])),
@@ -2078,6 +2115,7 @@ function mapToolbox(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Date"])),
     presenter: normalizeText(fieldValue(item.fields, ["Presenter"])),
@@ -2094,6 +2132,7 @@ function mapVehicle(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     dateReported: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
     reportedBy: normalizeText(fieldValue(item.fields, ["Inspector"])),
@@ -2113,6 +2152,7 @@ function mapInspections(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Inspection_x0020_Date", "Inspection Date"])),
     crew: normalizeText(fieldValue(item.fields, ["Crew"])),
@@ -2161,6 +2201,7 @@ function mapHazard(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Assessment_x0020_Date", "Assessment Date"])),
     task: normalizeText(fieldValue(item.fields, ["Area_x002f_Process", "Area/Process", "Title"])),
@@ -2179,6 +2220,7 @@ function mapCommittee(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Title"])),
     role: normalizeText(fieldValue(item.fields, ["Role"])),
@@ -2242,6 +2284,7 @@ function mapTruckProfiles(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     unit: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     plate: normalizeText(fieldValue(item.fields, ["Plate"])),
@@ -2270,6 +2313,7 @@ function mapMaintenanceLocations(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     name: normalizeText(fieldValue(item.fields, ["Location_x0020_Name", "Location Name", "Title"])),
     address: normalizeText(fieldValue(item.fields, ["Address"])),
@@ -2285,6 +2329,7 @@ function mapMaintenanceRecords(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     truck: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
     truckId: normalizeText(fieldValue(item.fields, ["Truck_x0020_ID", "Truck ID"])),
@@ -2321,6 +2366,7 @@ function mapLifts(items){
   return items.map(item => ({
     id: item.id,
     etag: item["@odata.etag"],
+    sourceId: normalizeText(fieldValue(item.fields, ["SourceId"])),
     company: normalizeText(fieldValue(item.fields, ["Company"])),
     date: normalizeText(fieldValue(item.fields, ["Date"])),
     operator: normalizeText(fieldValue(item.fields, ["Operator"])),
@@ -2826,28 +2872,33 @@ async function seedLoadedDataToSP(localDb){
       const spItems=await getListItems(listSlug);
       const existingSourceIds=new Set(spItems.map(item=>item.fields?.SourceId).filter(Boolean));
       for(const item of localItems){
-        if(!item.id){
+        if(item?.etag && !item?.sourceId){
           skippedCount++;
           continue;
         }
-        if(existingSourceIds.has(item.id)){
-          console.log(`Skipping ${entityKey} item (already in SP):`,item.id);
+        const sourceId=getEntitySourceId(item);
+        if(!sourceId){
+          skippedCount++;
+          continue;
+        }
+        if(existingSourceIds.has(sourceId)){
+          console.log(`Skipping ${entityKey} item (already in SP):`,sourceId);
           skippedCount++;
           continue;
         }
         if(!FEATURE_FLAGS['write_enabled_'+listSlug]){
-          console.warn(`List write disabled for ${listSlug}, skipping ${entityKey} ${item.id}`);
+          console.warn(`List write disabled for ${listSlug}, skipping ${entityKey} ${sourceId}`);
           skippedCount++;
           continue;
         }
         try{
-          const fields=buildSeedFields(entityKey,item);
+          const fields=buildSeedFields(entityKey,{...item,sourceId});
           const result=await graphCreateItem(listSlug,fields);
           createdCount++;
-          console.log(`Migrated 1 item: ${entityKey} ${item.id}`);
+          console.log(`Migrated 1 item: ${entityKey} ${sourceId}`);
         } catch(e){
-          errors.push({entity:entityKey,id:item.id,error:e.message});
-          console.warn(`Failed to migrate ${entityKey} ${item.id}:`,e);
+          errors.push({entity:entityKey,id:sourceId,error:e.message});
+          console.warn(`Failed to migrate ${entityKey} ${sourceId}:`,e);
           skippedCount++;
         }
       }
@@ -5361,7 +5412,7 @@ async function saveEditedDocument(){
       const entity = {company, name:docName, number:byId("doc_number").value.trim(), revision:byId("doc_revision").value.trim(), owner:byId("doc_owner").value.trim(), type:byId("doc_type").value, effective:byId("doc_effective").value, lastReviewed:byId("doc_last_reviewed").value, review:byId("doc_review").value, manual:byId("doc_manual").value.trim(), cor:byId("doc_cor").value.trim(), status, archivedDate: status === "Archived" ? byId("doc_archivedDate").value : null, notes:byId("doc_notes").value, filePresent:byId("doc_file_present").value, fileName:byId("doc_file_name").value.trim(), addedBy:byId("doc_file_by").value.trim(), dateAdded:byId("doc_file_date").value};
       db.documents.push(entity);
       rebuildAll();
-      const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+      const fields = buildDocumentFields(entity);
       await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
     } else {
       const editId = card.dataset.editId;
@@ -5414,7 +5465,7 @@ async function saveEditedDocument(){
       }
       try {
         const doc = db.documents[index];
-        const fields = {Title: doc.name, Company: doc.company, "COR_x0020_Section": doc.cor, "Document_x0020_Type": doc.type, "Last_x0020_Review_x0020_Date": doc.lastReviewed, "Next_x0020_Review_x0020_Due": doc.review, Number: doc.number, Revision: doc.revision, Owner: doc.owner, Effective: doc.effective, Status: doc.status, ArchivedDate: doc.archivedDate, Notes: doc.notes, ManualSection: doc.manual, FilePresent: doc.filePresent, FileName: doc.fileName, AddedBy: doc.addedBy, DateAdded: doc.dateAdded};
+        const fields = buildDocumentFields(doc);
         if(!doc.id){
           const result = await graphCreateItem("documents", fields);
           doc.id = result.id;
@@ -5466,7 +5517,7 @@ async function batchAddDocuments(){
   byId("doc_batch_preview").innerHTML = "No files selected.";
   rebuildAll();
   for(const entity of newEntities){
-    const fields = {Title: entity.name, Company: entity.company, "COR_x0020_Section": entity.cor, "Document_x0020_Type": entity.type, "Last_x0020_Review_x0020_Date": entity.lastReviewed, "Next_x0020_Review_x0020_Due": entity.review, Number: entity.number, Revision: entity.revision, Owner: entity.owner, Effective: entity.effective, Status: entity.status, ArchivedDate: entity.archivedDate, Notes: entity.notes, ManualSection: entity.manual, FilePresent: entity.filePresent, FileName: entity.fileName, AddedBy: entity.addedBy, DateAdded: entity.dateAdded};
+    const fields = buildDocumentFields(entity);
     await syncCreateToSP("documents", "write_enabled_documents", entity, fields);
   }
 }
