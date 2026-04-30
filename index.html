@@ -2790,7 +2790,7 @@ function importData(event){
   if(!file) return;
   const input=event.target;
   const reader=new FileReader();
-  reader.onload=function(){
+  reader.onload=async function(){
     try{
       const parsed=JSON.parse(reader.result);
       let importedDB;
@@ -2808,7 +2808,17 @@ function importData(event){
       saveDB();
       rebuildAll();
       updateImportUIForAdmin();
-      alert("Backup restored locally. Use Sync to SharePoint to persist restored records to SharePoint.");
+      if(isAdmin()){
+        try{
+          const result=await seedLoadedDataToSP(db);
+          showToast(`✓ Imported and synced to SharePoint. ${result.created} created, ${result.skipped} skipped`,"success");
+        } catch(error){
+          console.error("SharePoint sync failed:",error);
+          showToast("Imported locally; SharePoint sync failed: "+(error.message||error.toString()),"error");
+        }
+      } else {
+        showToast("Imported locally. An admin must sync to SharePoint to make data persistent.","info");
+      }
     } catch(e){
       console.error("Import error:",e);
       alert("Import failed: "+e.message);
