@@ -349,23 +349,25 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
             <button class="btn secondary" onclick="clearDocumentEditor()">New / Clear</button>
           </div>
         </div>
-        <div class="card">
-          <h3>Batch Document Tracker</h3>
-          <div class="small">Select multiple files. The app will create document tracker rows using the file names only. No files are stored.</div>
-          <div class="field-grid">
-            <div class="field"><label>Company</label><input id="doc_batch_company" readonly></div>
-            <div class="field span-3"><label>Select Files</label><input id="doc_batch_files" type="file" multiple onchange="showSelectedBatchFiles()"><div id="doc_batch_preview" class="file-preview">No files selected.</div></div>
-            <div class="field"><label>Owner</label><input id="doc_batch_owner"></div>
-            <div class="field"><label>Document Type</label><select id="doc_batch_type"><option>Policy</option><option>Procedure</option><option>Form</option><option>Safe Work Practice</option><option>Safe Job Procedure</option><option>Program</option><option>Plan</option><option>Record</option><option>Matrix</option><option>Other</option></select></div>
-            <div class="field"><label>Manual Section</label><input id="doc_batch_manual"></div>
-            <div class="field"><label>COR Section</label><input id="doc_batch_cor"></div>
-            <div class="field"><label>Last Reviewed Date</label><input id="doc_batch_last_reviewed" type="date" onchange="setNextReviewFromLastReviewed('doc_batch_last_reviewed','doc_batch_review')"></div>
-            <div class="field"><label>Next Review Date</label><input id="doc_batch_review" type="date"></div>
-          </div>
-          <div class="footer-note"><button class="btn" onclick="batchAddDocuments()">Create Document Rows</button></div>
-        </div>
       </div>
-      <div class="card"><h3>Documents Table</h3><div class="table-wrap"><table id="documentTable"></table></div></div>
+      <div class="card">
+        <h3>Batch Document Tracker</h3>
+        <div class="small">Select multiple files. The app will create document tracker rows using the file names only. No files are stored.</div>
+        <div class="field-grid">
+          <div class="field"><label>Company</label><input id="doc_batch_company" readonly></div>
+          <div class="field span-3"><label>Select Files</label><input id="doc_batch_files" type="file" multiple onchange="showSelectedBatchFiles()"><div id="doc_batch_preview" class="file-preview">No files selected.</div></div>
+          <div class="field"><label>Owner</label><input id="doc_batch_owner"></div>
+          <div class="field"><label>Document Type</label><select id="doc_batch_type"><option>Policy</option><option>Procedure</option><option>Form</option><option>Safe Work Practice</option><option>Safe Job Procedure</option><option>Program</option><option>Plan</option><option>Record</option><option>Matrix</option><option>Other</option></select></div>
+          <div class="field"><label>Manual Section</label><input id="doc_batch_manual"></div>
+          <div class="field"><label>COR Section</label><input id="doc_batch_cor"></div>
+          <div class="field"><label>Last Reviewed Date</label><input id="doc_batch_last_reviewed" type="date" onchange="setNextReviewFromLastReviewed('doc_batch_last_reviewed','doc_batch_review')"></div>
+          <div class="field"><label>Next Review Date</label><input id="doc_batch_review" type="date"></div>
+        </div>
+        <div class="footer-note"><button class="btn" onclick="batchAddDocuments()">Create Document Rows</button></div>
+        <h3>Documents Table</h3>
+        <div class="field" style="margin-bottom:16px;"><input id="doc_search_filter" type="text" placeholder="Search by name, number, or type..." onkeyup="filterDocuments()"></div>
+        <div class="table-wrap"><table id="documentTable"></table></div>
+      </div>
     </section>
 
     <section id="archived_documents" class="page">
@@ -5516,6 +5518,47 @@ function setNextReviewFromLastReviewed(lastId, nextId){
   byId(nextId).value = d.toISOString().slice(0,10);
 }
 
+function filterDocuments(){
+  const searchVal = byId("doc_search_filter").value.toLowerCase().trim();
+  const company = selectedCompany();
+  const docs = filterByCompany(db.documents || []);
+  let filtered = docs.filter(d => d.status !== "Archived");
+  if(searchVal){
+    filtered = filtered.filter(d => {
+      const name = (d.name || "").toLowerCase();
+      const number = (d.number || "").toLowerCase();
+      const type = (d.type || "").toLowerCase();
+      const comp = (d.company || "").toLowerCase();
+      return name.includes(searchVal) || number.includes(searchVal) || type.includes(searchVal) || comp.includes(searchVal);
+    });
+  }
+  renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Archive"], filtered.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary small" onclick="archiveDocument('${x.id || x.guid || i}','${esc(x.number)}','${esc(x.name)}')">Archive</button>`]));
+}
+
+async function archiveDocument(docId, docNumber, docName){
+  try {
+    let index = Number(docId);
+    if(Number.isNaN(index)){
+      index = db.documents.findIndex(d => d.id === docId || d.guid === docId);
+    }
+    if(Number.isNaN(index) || !db.documents[index]){
+      alert("Document not found.");
+      return;
+    }
+    db.documents[index].status = "Archived";
+    db.documents[index].archivedDate = new Date().toISOString().slice(0,10);
+    rebuildAll();
+    const fields = {Status: "Archived", ArchivedDate: db.documents[index].archivedDate};
+    await graphUpdateItem("documents", db.documents[index].id || db.documents[index].guid, fields);
+    showToast(`Document archived: ${docName}`, "success");
+    filterDocuments();
+    renderArchivedDocuments();
+  } catch(e) {
+    console.error("archiveDocument error:", e);
+    showToast(`Archive failed: ${e.message || e.code}`, "error");
+  }
+}
+
 async function batchAddDocuments(){
   const company=selectedCompany(); if(company==="All Companies"){ alert("Select a company first."); return; }
   const files = Array.from(byId("doc_batch_files").files || []);
@@ -6371,7 +6414,7 @@ function renderAll(){
   renderTable(byId("peopleTable"), ["Company","Employee","Roles","Department","Status","Edit"], people.map((x,i) => [esc(x.company), esc(x.name), esc((x.roles||[]).join(", ")), esc(x.department), statusPill(x.status), `<button class="btn secondary" onclick="editPerson('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingTable"), ["Company","Employee","Course","Status","Completion","Expiry","Document Present","Document / Description","Added By","Date Added","Certificates","Notes","Edit"], training.map((x,i) => [esc(x.company), esc(x.employee), esc(x.course), statusPill(x.status), esc(x.complete), esc(x.expiry), statusPill(x.documentPresent), esc(x.documentName), esc(x.addedBy), esc(x.dateAdded), renderTrainingCertLinks(x.certificates || []), esc(x.notes), `<button class="btn secondary" onclick="editTraining('${x.id || x.guid || i}')">Edit</button>`]));
   renderTable(byId("trainingGapTable"), ["Company","Employee","Roles","Required Course","Status","Due / Expiry","Notes"], gaps.map(x => [esc(x.company), esc(x.employee), esc(x.roles), esc(x.course), statusPill(x.status), esc(x.due), esc(x.notes)]));
-  renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Edit"], docs.map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary" onclick="editDocument('${x.id || x.guid || i}')">Edit</button>`]));
+  renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Archive"], docs.filter(d => d.status !== "Archived").map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary small" onclick="archiveDocument('${x.id || x.guid || i}','${esc(x.number)}','${esc(x.name)}')">Archive</button>`]));
   renderArchivedDocuments();
   renderTable(byId("manualTable"), ["Company","Section","Owner","Status","Linked Documents"], manual.map(x => [esc(x.company), esc(x.section), esc(x.owner), statusPill(x.status), esc(x.document)]));
   renderTable(byId("corTable"), ["Section","Required Types","Present Types","Missing Types","Documents","Valid Docs","Status","Notes"], cor.map(x => [esc(x.section), esc(x.requiredTypes || ""), esc(x.presentTypes || ""), esc(x.missingTypes || ""), esc(x.documentCount || 0), esc(x.validDocumentCount || 0), statusPill(x.status), esc(x.notes)]));
