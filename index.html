@@ -2651,7 +2651,8 @@ function importData(event){
 const ADMIN_EMAILS=["nickie@heave-away.ca","david@automyz.ca"];
 function isAdmin(){
   try{
-    const userEmail=(window.userEmail||"").toLowerCase();
+    const account=(typeof msalClient!=='undefined'&&msalClient?.getActiveAccount?.())||null;
+    const userEmail=(account?.username||"").toLowerCase();
     if(!userEmail) return false;
     return ADMIN_EMAILS.some(email=>email.toLowerCase()===userEmail);
   } catch(e){
