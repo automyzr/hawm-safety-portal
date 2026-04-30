@@ -128,6 +128,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     <button class="nav-btn" data-page="inspections">Site Inspections</button>
     <button class="nav-btn" data-page="incidents">Incidents</button>
     <button class="nav-btn" data-page="hazard">Hazard Assessment</button>
+    <button class="nav-btn" data-page="sds">Safety Data Sheets</button>
     <button class="nav-btn" data-page="committee">WHSR / Committee</button>
     <button class="nav-btn" data-page="ca">Corrective Actions</button>
     <button class="nav-btn" data-page="ca_closed">Closed & Verified</button>
@@ -598,6 +599,17 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
       <div class="card"><div class="table-wrap"><table id="hazardTable"></table></div></div>
     </section>
 
+    <section id="sds" class="page">
+      <div class="card">
+        <h3>Safety Data Sheets</h3>
+        <div class="field-grid">
+          <div class="field span-4"><label>Search</label><input id="sds_search" type="text" placeholder="Search SDS by name or material..."></div>
+        </div>
+        <div class="table-wrap"><table id="sdsTable"><thead><tr><th>Name</th><th>Material</th><th>Date Added</th><th>Actions</th></tr></thead></table></div>
+        <div id="sds_empty" class="small">No safety data sheets added yet.</div>
+      </div>
+    </section>
+
     <section id="committee" class="page">
       <div class="card" id="committeeCard" data-mode="add">
         <h3 id="committeeCardTitle">Add WHSR / Committee Record</h3>
@@ -783,7 +795,7 @@ const FEATURE_FLAGS = {
 let msalClient = null;
 let graphSiteId = "";
 const graphListIdCache = new Map();
-const defaultDB = { state:{selectedCompany:"All Companies",lastExport:"",lastImport:"",analyticsBaseline:""}, people:[], training:[], documents:[], manual:[], cor:[], corOverrides:{}, toolbox:[], vehicleInspections:[], truckProfiles:[], inspections:[], incidents:[], hazard:[], committee:[], correctiveActions:[], incidentCounters:{}, maintenanceLocations:[], maintenanceRecords:[], lifts:[], audit:[] };
+const defaultDB = { state:{selectedCompany:"All Companies",lastExport:"",lastImport:"",analyticsBaseline:""}, people:[], training:[], documents:[], manual:[], cor:[], corOverrides:{}, toolbox:[], vehicleInspections:[], truckProfiles:[], inspections:[], incidents:[], hazard:[], sds:[], committee:[], correctiveActions:[], incidentCounters:{}, maintenanceLocations:[], maintenanceRecords:[], lifts:[], audit:[] };
 const companyRoles = {
   "Heave Away":["Manager","Safety","Roll Off","Front Load","Fork Truck"],
   "Cadillac":["Manager","Supervisor","Vice President","Safety","Water & Sewer","Heavy Civil","Landscaper","Carpenter"]
