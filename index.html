@@ -1041,6 +1041,41 @@ function normalizeImportIds(importedDb){
   });
   return importedDb;
 }
+function normalizeDerivedEntityIds(){
+  [["manual", db.manual], ["cor", db.cor], ["correctiveActions", db.correctiveActions]].forEach(([entityKey, items]) => {
+    if(!Array.isArray(items)) return;
+    items.forEach((item, index) => {
+      if(item && !item.id){
+        const fingerprint = stableSerialize({ entityKey, index, item });
+        item.id = `${entityKey}_${hashString(fingerprint)}`;
+      }
+    });
+  });
+}
+function buildSeedFields(entityKey, item){
+  switch(entityKey){
+    case "people":
+      return {Title: item.name || "Person", Company: item.company, Department: item.department, Status: item.status, "Roles@odata.type": "Collection(Edm.String)", Roles: item.roles || [], SourceId: item.id};
+    case "training":
+      return {Title: item.employee || "Training", Company: item.company, Employee: item.employee, Course: item.course, "Completion_x0020_Date": item.complete, "Expiry_x0020_Date": item.expiry, Notes: item.notes, Status: item.status, DocumentPresent: item.documentPresent, DocumentName: item.documentName, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+    case "documents":
+      return {Title: item.name, Company: item.company, "COR_x0020_Section": item.cor, "Document_x0020_Type": item.type, "Last_x0020_Review_x0020_Date": item.lastReviewed, "Next_x0020_Review_x0020_Due": item.review, Number: item.number, Revision: item.revision, Owner: item.owner, Effective: item.effective, Status: item.status, ArchivedDate: item.archivedDate, Notes: item.notes, ManualSection: item.manual, FilePresent: item.filePresent, FileName: item.fileName, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+    case "manual":
+      return {Title: item.section || "Manual Section", Company: item.company, Owner: item.owner, Priority: item.status, Document: item.document, Content: item.content || "", SourceId: item.id};
+    case "cor":
+      return {Title: item.section || "COR", Company: item.company, Compliant: item.status === "Pass", Comment: item.notes || "", "Last_x0020_Audit_x0020_Date": item.lastAuditDate || "", SourceId: item.id};
+    case "toolbox":
+      return {Title: item.topic || "Toolbox Talk", Company: item.company, Date: item.date, Topic: item.topic, Presenter: item.presenter, Attendees: (item.attendees || []).join(";"), Notes: item.notes, DocumentReviewed: item.documentReviewed, DocumentIndex: item.documentIndex, Duration_x0020_Minutes: (item.durationMinutes === "" || item.durationMinutes == null) ? null : Number(item.durationMinutes), SourceId: item.id};
+    case "inspections":
+      return {Title: item.location || "Inspection", Company: item.company, "Inspection_x0020_Date": item.date, Area: item.location, Inspector: item.inspector, Findings: item.notes, Crew: item.crew, ProofPresent: item.proofPresent, ProofDescription: item.proofDescription, AddedBy: item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+    case "incidents":
+      return {Title: item.incidentNumber || "Incident", Company: item.company, "Incident_x0020_ID": item.incidentNumber, Date: item.date, "Employee_x0020__x0028_Injured_x0029_": item.employee, Location: item.location, Unit: item.unit, "Investigation_x0020_Status": item.severity, LiftType: item.liftType, Description: item.description, PhotosPresent: item.photosPresent, VideoPresent: item.videoPresent, ProofDescription: item.proofDescription, "Immediate_x0020_Causes": (item.immediateCause || []).join(", "), ImmediateCauseNotes: item.immediateCauseNotes, "Basic_x0020_Causes": (item.basicCause || []).join(", "), BasicCauseNotes: item.basicCauseNotes, IssueTags: (item.issueTags || []).join(", "), Witnesses: (item.witnesses || []).join(", "), "Reported_x0020_By": item.addedBy, DateAdded: item.dateAdded, SourceId: item.id};
+    case "correctiveActions":
+      return {Title: item.action || item.reference || "Corrective Action", Status: item.status || "Open", "Source_x0020_Type": item.sourceType || "", "Triggered_x0020_By": item.source || "", "Related_x0020_Incident_x002f_Inspection": item.reference || "", Priority: item.priority || "Medium", "Assigned_x0020_To": item.assigned || "", "Due_x0020_Date": item.due || "", Description: item.action || "", "Completion_x0020_Date": item.completionDate || "", "Evidence_x002f_Notes": item.completionNotes || item.evidenceDescription || item.evidence || "", Verification: item.verification || "", "Status_x0020_Auto_x003f_": item.auto ? "Yes" : "No", "Escalation_x0020_Notes": item.escalation || "", Company: item.company || "", SourceId: item.id};
+    default:
+      return {...item, SourceId: item.id};
+  }
+}
 function logAuditEntry(arg){
   // Support both simple format: logAuditEntry(action, listSlug, entityId, fields)
   // and object format: logAuditEntry({action, list, itemId, ...})
@@ -2779,8 +2814,7 @@ async function seedLoadedDataToSP(localDb){
           continue;
         }
         try{
-          const fields={...item,SourceId:item.id};
-          delete fields.id;
+          const fields=buildSeedFields(entityKey,item);
           const result=await graphCreateItem(listSlug,fields);
           createdCount++;
           console.log(`Migrated 1 item: ${entityKey} ${item.id}`);
@@ -4972,7 +5006,7 @@ function buildCorrectiveActions(){
 }
 function enforceEscalation(){ db.correctiveActions.forEach(r => { r.status=calcCAStatus(r); r.escalation=r.status==="Overdue"?"Escalated to Ops Manager / GM":""; }); }
 function getReminderRows(){ return filterByCompany(db.correctiveActions).map(r => ({...r, status:calcCAStatus(r), days:daysUntil(r.due)})).sort((a,b)=>(a.days??9999)-(b.days??9999)); }
-function rebuildAll(){ buildManual(); buildCOR(); buildCorrectiveActions(); saveDB(); renderAll(); }
+function rebuildAll(){ buildManual(); buildCOR(); buildCorrectiveActions(); normalizeDerivedEntityIds(); saveDB(); renderAll(); }
 
 function renderArchivedDocuments(){
   try {
