@@ -125,7 +125,7 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
     <button class="nav-btn" data-page="lifts">Lifts</button>
     <button class="nav-btn" data-page="maintenance_locations">Maintenance Locations</button>
     <button class="nav-btn" data-page="maintenance_records">Maintenance Records</button>
-    <button class="nav-btn" data-page="inspections">Inspections</button>
+    <button class="nav-btn" data-page="inspections">Field Inspections</button>
     <button class="nav-btn" data-page="incidents">Incidents</button>
     <button class="nav-btn" data-page="hazard">Hazard Assessment</button>
     <button class="nav-btn" data-page="committee">WHSR / Committee</button>
@@ -475,6 +475,8 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <div class="field span-3"><label>Selected Files</label><div id="truck_registration_preview" class="file-preview">No files selected.</div><div id="truck_existing_registration_uploads" class="attachment-list"></div></div>
           <div class="field"><label>Permit Uploads</label><input id="truck_permitFiles" type="file" multiple onchange="showSelectedPortalFiles('truck_permitFiles','truck_permit_preview')"></div>
           <div class="field span-3"><label>Selected Files</label><div id="truck_permit_preview" class="file-preview">No files selected.</div><div id="truck_existing_permit_uploads" class="attachment-list"></div></div>
+          <div class="field"><label>Annual Inspection Uploads</label><input id="truck_annualInspectionFiles" type="file" multiple onchange="showSelectedPortalFiles('truck_annualInspectionFiles','truck_annual_inspection_preview')"></div>
+          <div class="field span-3"><label>Selected Files</label><div id="truck_annual_inspection_preview" class="file-preview">No files selected.</div><div id="truck_existing_annual_inspection_uploads" class="attachment-list"></div></div>
         </div>
         <div class="footer-note">
           <button class="btn" id="truckSaveBtn" onclick="saveEditedTruckProfile()">Add Truck Profile</button>
@@ -6298,6 +6300,31 @@ function tryVerifyCA(index){
   if(!(r.completionDate && r.completionNotes && r.evidencePresent==="Yes" && r.evidenceDescription && r.verifiedBy)){ alert("Strict closeout: add completion date, completion notes, evidence present = Yes, evidence description, and verified by before closing."); return; }
   r.verifiedEffective=true; enforceEscalation(); saveDB(); renderAll();
 }
+function uploadCAEvidence(caIndex){
+  let input = byId('caEvidenceUpload_' + caIndex);
+  if(!input){
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'caEvidenceUpload_' + caIndex;
+    input.onchange = () => handleCAEvidenceUpload(caIndex);
+    document.body.appendChild(input);
+  }
+  input.click();
+}
+function handleCAEvidenceUpload(caIndex){
+  const file = byId('caEvidenceUpload_' + caIndex).files[0];
+  if(!file) return;
+  (async () => {
+    try {
+      await storePortalFile(file);
+      updateCA(caIndex, 'evidenceFileName', file.name);
+      showToast('Evidence file uploaded: ' + file.name);
+      byId('caEvidenceUpload_' + caIndex).value = '';
+    } catch(err) {
+      showToast('Evidence upload failed: ' + (err && err.message || err), 'error');
+    }
+  })();
+}
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", ()=>{ document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active")); document.querySelectorAll(".page").forEach(p=>p.classList.remove("active")); btn.classList.add("active"); byId(btn.dataset.page).classList.add("active"); byId("pageTitle").textContent=btn.textContent; const sidebar=document.querySelector('.sidebar'); if(sidebar) sidebar.classList.remove('open'); }));
 
 function populateMonthlySelectors(){
@@ -6416,9 +6443,9 @@ function renderAll(){
   renderTable(byId("trainingGapTable"), ["Company","Employee","Roles","Required Course","Status","Due / Expiry","Notes"], gaps.map(x => [esc(x.company), esc(x.employee), esc(x.roles), esc(x.course), statusPill(x.status), esc(x.due), esc(x.notes)]));
   renderTable(byId("documentTable"), ["Company","Document","Type","Doc #","Revision","Owner","Effective","Last Reviewed","Next Review","Manual Section","COR Section","File Present","File / Description","Added By","Date Added","Notes","Archive"], docs.filter(d => d.status !== "Archived").map((x,i) => [esc(x.company), esc(x.name), esc(x.type || ""), esc(x.number), esc(x.revision), esc(x.owner), esc(x.effective), esc(x.lastReviewed || ""), esc(x.review), esc(x.manual), esc(x.cor), statusPill(x.filePresent), esc(x.fileName), esc(x.addedBy), esc(x.dateAdded), esc(x.notes), `<button class="btn secondary small" onclick="archiveDocument('${x.id || x.guid || i}','${esc(x.number)}','${esc(x.name)}')">Archive</button>`]));
   renderArchivedDocuments();
-  renderTable(byId("manualTable"), ["Company","Section","Owner","Status","Linked Documents"], manual.map(x => [esc(x.company), esc(x.section), esc(x.owner), statusPill(x.status), esc(x.document)]));
+  renderTable(byId("manualTable"), ["Company","Section","Owner","Linked Documents"], manual.map(x => [esc(x.company), esc(x.section), esc(x.owner), esc(x.document)]));
   renderTable(byId("corTable"), ["Section","Required Types","Present Types","Missing Types","Documents","Valid Docs","Status","Notes"], cor.map(x => [esc(x.section), esc(x.requiredTypes || ""), esc(x.presentTypes || ""), esc(x.missingTypes || ""), esc(x.documentCount || 0), esc(x.validDocumentCount || 0), statusPill(x.status), esc(x.notes)]));
-  renderTable(byId("toolboxTable"), ["Company","Date","Presenter","Topic","Attendees","Document Reviewed","Reviewed Document","Uploads","Notes","Edit"], toolbox.map((x,i) => { const docsForCompany = filterByCompany(db.documents); const doc = x.documentIndex !== "" && docsForCompany[Number(x.documentIndex)] ? docsForCompany[Number(x.documentIndex)].name : ""; return [esc(x.company), esc(x.date), esc(x.presenter), esc(x.topic), esc((x.attendees || []).join(", ")), statusPill(x.documentReviewed), esc(doc), renderPortalFileLinks(x.uploads || []), esc(x.notes), `<button class="btn secondary" onclick="editToolbox('${x.id || x.guid || i}')">Edit</button>`]; }));
+  renderTable(byId("toolboxTable"), ["Company","Date","Presenter","Topic","Attendees","Document Reviewed","Reviewed Document","Uploads","Notes","Edit"], toolbox.slice().sort((a,b) => new Date(b.date) - new Date(a.date)).map((x,i) => { const docsForCompany = filterByCompany(db.documents); const doc = x.documentIndex !== "" && docsForCompany[Number(x.documentIndex)] ? docsForCompany[Number(x.documentIndex)].name : ""; return [esc(x.company), esc(x.date), esc(x.presenter), esc(x.topic), esc((x.attendees || []).join(", ")), statusPill(x.documentReviewed), esc(doc), renderPortalFileLinks(x.uploads || []), esc(x.notes), `<button class="btn secondary" onclick="editToolbox('${x.id || x.guid || i}')">Edit</button>`]; }));
   renderTable(byId("vehicleTable"), ["Company","Date Reported","Reported By","Unit","Plate","Severity","Out of Service","Assigned","Defect","Repair Due","Date Repaired","Hours Reported to Repaired","Uploads","Edit"], vehicleInspections.map((x,i) => [
     esc(x.company), esc(x.dateReported), esc(x.reportedBy), esc(x.unit), esc(x.plate), statusPill(x.severity), statusPill(x.outOfService), esc(x.assigned), esc(x.defect), esc(x.repairDue), esc(x.dateRepaired), esc(vehicleHoursToRepair(x) ?? ""), renderPortalFileLinks(x.uploads || []), `<button class="btn secondary" onclick="editVehicleDefect('${x.id || x.guid || i}')">Edit</button>`
   ]));
@@ -6438,7 +6465,7 @@ function renderAll(){
     statusPill(x.status),
     x.locked ? esc(x.action) : `<textarea onchange="updateCA(${i},'action',this.value)">${esc(x.action)}</textarea>`,
     `<input type="date" value="${esc(x.completionDate||'')}" onchange="updateCA(${i},'completionDate',this.value)"><br><textarea placeholder="Completion notes" onchange="updateCA(${i},'completionNotes',this.value)">${esc(x.completionNotes||'')}</textarea>`,
-    `<select onchange="updateCA(${i},'evidencePresent',this.value)"><option ${x.evidencePresent==='No'?'selected':''}>No</option><option ${x.evidencePresent==='Yes'?'selected':''}>Yes</option></select><br><input placeholder="Evidence description" value="${esc(x.evidenceDescription||'')}" onchange="updateCA(${i},'evidenceDescription',this.value)"><br><input placeholder="Added by" value="${esc(x.evidenceAddedBy||'')}" onchange="updateCA(${i},'evidenceAddedBy',this.value)"><br><input type="date" value="${esc(x.evidenceDateAdded||'')}" onchange="updateCA(${i},'evidenceDateAdded',this.value)">`,
+    `<select onchange="updateCA(${i},'evidencePresent',this.value)"><option ${x.evidencePresent==='No'?'selected':''}>No</option><option ${x.evidencePresent==='Yes'?'selected':''}>Yes</option></select><br><input placeholder="Evidence description" value="${esc(x.evidenceDescription||'')}" onchange="updateCA(${i},'evidenceDescription',this.value)"><br><input placeholder="Added by" value="${esc(x.evidenceAddedBy||'')}" onchange="updateCA(${i},'evidenceAddedBy',this.value)"><br><input type="date" value="${esc(x.evidenceDateAdded||'')}" onchange="updateCA(${i},'evidenceDateAdded',this.value)"><br><button class="btn secondary small" onclick="uploadCAEvidence(${i})">Upload Evidence</button>`,
     `<input placeholder="Verified by" value="${esc(x.verifiedBy||'')}" onchange="updateCA(${i},'verifiedBy',this.value)"><br><button class="btn secondary" onclick="tryVerifyCA(${i})">Verify & Close</button>`,
     esc(x.escalation || "")
   ]));
