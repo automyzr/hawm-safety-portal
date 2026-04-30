@@ -170,8 +170,9 @@ th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:upp
           <option value="Heave Away">Heave Away</option>
           <option value="Cadillac">Cadillac</option>
         </select>
-        <button class="btn secondary" onclick="exportData()">Export Data</button>
-        <label class="btn secondary" style="display:inline-flex;align-items:center;">Import Data
+        <button class="btn secondary" onclick="exportData()">Create Backup</button>
+        <label class="btn secondary" id="restoreBackupLabel" style="display:none;align-items:center;" title="Admin-only backup restore">
+          Restore Backup
           <input type="file" accept=".json" style="display:none" onchange="importData(event)">
         </label>
         <button class="btn secondary" id="syncToSPBtn" onclick="seedFromExport()" style="display:none;">Sync to SharePoint</button>
@@ -1005,6 +1006,40 @@ function migrateAfterImport(){
   if(!db.incidents) db.incidents = [];
   if(!db.hazard) db.hazard = [];
   migrateDocumentsStatusField();
+}
+function stableSerialize(value){
+  if(Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if(value && typeof value === "object"){
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function hashString(input){
+  let hash = 2166136261;
+  for(let index = 0; index < input.length; index++){
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function normalizeImportIds(importedDb){
+  if(!importedDb || typeof importedDb !== "object") return importedDb;
+  const entityKeys = [
+    "people","training","documents","manual","cor","toolbox","vehicleInspections",
+    "inspections","incidents","hazard","committee","correctiveActions",
+    "truckProfiles","maintenanceLocations","maintenanceRecords","lifts"
+  ];
+  entityKeys.forEach(entityKey => {
+    const items = importedDb[entityKey];
+    if(!Array.isArray(items)) return;
+    items.forEach((item, index) => {
+      if(item && !item.id){
+        const fingerprint = stableSerialize({ entityKey, index, item });
+        item.id = `${entityKey}_${hashString(fingerprint)}`;
+      }
+    });
+  });
+  return importedDb;
 }
 function logAuditEntry(arg){
   // Support both simple format: logAuditEntry(action, listSlug, entityId, fields)
@@ -2617,7 +2652,7 @@ function clearPortalFilePicker(inputId, previewId){
   if(byId(previewId)) byId(previewId).innerHTML = "No files selected.";
 }
 
-function exportData(){ db.state.lastExport=new Date().toISOString().slice(0,10); saveDB(); const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="unified_master_tracker_only_v2_export.json"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500); renderAll(); alert("Data exported. Note: uploaded training certificates and field uploads stay in this browser and are not included in the JSON export."); }
+function exportData(){ db.state.lastExport=new Date().toISOString().slice(0,10); saveDB(); const blob=new Blob([JSON.stringify(db,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="unified_master_tracker_only_v2_backup.json"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500); renderAll(); alert("Backup created. Note: uploaded training certificates and field uploads stay in this browser and are not included in the JSON backup."); }
 function importData(event){
   const file=event.target.files[0];
   if(!file) return;
@@ -2634,12 +2669,14 @@ function importData(event){
       } else {
         throw new Error("Unrecognized import format");
       }
+      normalizeImportIds(importedDB);
       db={...deepCopy(defaultDB), ...importedDB};
       migrateAfterImport();
       db.state.lastImport=new Date().toISOString().slice(0,10);
+      saveDB();
       rebuildAll();
       updateImportUIForAdmin();
-      alert("Import complete.");
+      alert("Backup restored locally. Use Sync to SharePoint to persist restored records to SharePoint.");
     } catch(e){
       console.error("Import error:",e);
       alert("Import failed: "+e.message);
@@ -2648,7 +2685,7 @@ function importData(event){
   };
   reader.readAsText(file);
 }
-const ADMIN_EMAILS=["nickie@heave-away.ca","david@automyz.ca"];
+const ADMIN_EMAILS=["nickie@heave-away.ca","david@automyz.ca","automation@heave-away.ca"];
 function isAdmin(){
   try{
     const account=(typeof msalClient!=='undefined'&&msalClient?.getActiveAccount?.())||null;
@@ -2662,11 +2699,14 @@ function isAdmin(){
 }
 function toggleAdminUI(){
   const btn=byId("syncToSPBtn");
+  const restoreLabel=byId("restoreBackupLabel");
   if(!btn) return;
   if(isAdmin()){
     btn.style.display="inline-block";
+    if(restoreLabel) restoreLabel.style.display="inline-flex";
   } else {
     btn.style.display="none";
+    if(restoreLabel) restoreLabel.style.display="none";
   }
 }
 function updateImportUIForAdmin(){
