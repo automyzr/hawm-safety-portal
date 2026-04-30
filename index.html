@@ -1297,7 +1297,10 @@ function isCardDirty(cardId){
   for(const el of inputs){
     const k = el.id || el.name;
     if(!k) continue;
-    if((baseline[k] || '') !== (el.value || '')) return true;
+    // FIXED BT-UAT.01.A: for checkboxes, compare checked state; for others, compare value
+    const currentVal = el.type === 'checkbox' ? String(el.checked) : (el.value || '');
+    const baselineVal = baseline[k] || '';
+    if(baselineVal !== currentVal) return true;
   }
   return false;
 }
@@ -1306,7 +1309,11 @@ function snapshotCard(cardId){
   if(!card) return;
   const inputs = card.querySelectorAll('input,select,textarea');
   const snap = {};
-  inputs.forEach(el => { const k=el.id||el.name; if(k) snap[k]=el.value||''; });
+  // FIXED BT-UAT.01.A: for checkboxes, snapshot checked state; for others, snapshot value
+  inputs.forEach(el => {
+    const k=el.id||el.name;
+    if(k) snap[k]= el.type === 'checkbox' ? String(el.checked) : (el.value||'');
+  });
   card.dataset.baseline = JSON.stringify(snap);
 }
 function fieldValue(fields, keys, fallback=""){
@@ -4085,7 +4092,7 @@ function clearLiftEditor(){
   document.getElementById('liftCardSubtitle').textContent = 'Enter lift information for the selected truck.';
   document.getElementById('liftSaveBtn').textContent = 'Add Lift Record';
   ["lift_date","lift_operator","lift_unit","lift_type","lift_count"].forEach(id => { if(byId(id)) byId(id).value = ""; });
-  clearSnapshot('liftCard');
+  snapshotCard('liftCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 
 function renderLifts(){
@@ -4305,7 +4312,7 @@ function clearMaintLocEditor(){
   document.getElementById('maintLocSaveBtn').textContent = 'Add';
   ["maintLoc_name","maintLoc_address","maintLoc_hourlyLabourRate"].forEach(id => byId(id).value = "");
   byId("maintLoc_dealer").checked=false;
-  clearSnapshot('maintLocCard');
+  snapshotCard('maintLocCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 
 function renderMaintLocations(){
@@ -4563,7 +4570,7 @@ function clearMaintRecordEditor(){
   document.getElementById('maintRecordCardSubtitle').textContent = 'Enter maintenance information for the selected truck.';
   document.getElementById('maintRecordSaveBtn').textContent = 'Add';
   ["maint_truck","maint_assignedTo","maint_location","maint_type","maint_linkedIncident","maint_issueCategory","maint_description","maint_downtimeStart","maint_downtimeEnd","maint_repairStart","maint_repairEnd","maint_partsOrdered","maint_partsArrived","maint_invoiceNumber","maint_invoiceDate","maint_invoicePartsCost","maint_invoiceLabourCost","maint_coolant","maint_hydraulicOil","maint_motorOil","maint_uploads"].forEach(id => byId(id).value = "");
-  clearSnapshot('maintRecordCard');
+  snapshotCard('maintRecordCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 
 function renderMaintRecords(){
@@ -5633,7 +5640,7 @@ function clearInspectionEditor(){
   byId("insp_proof_present").value = "No";
   clearPortalFilePicker("insp_upload_files","insp_upload_preview");
   byId("insp_existing_uploads").innerHTML = "";
-  clearSnapshot('inspectionCard');
+  snapshotCard('inspectionCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 async function saveEditedInspection(){
   try{
@@ -5770,7 +5777,7 @@ function clearIncidentEditor(){
   byId("incident_video_present").value = "No";
   clearPortalFilePicker("incident_upload_files","incident_upload_preview");
   byId("incident_existing_uploads").innerHTML = "";
-  clearSnapshot('incidentCard');
+  snapshotCard('incidentCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 async function saveEditedIncident(){
   try{
@@ -5930,7 +5937,7 @@ function clearHazardEditor(){
   byId("hazard_proof_present").value = "No";
   clearPortalFilePicker("hazard_upload_files","hazard_upload_preview");
   byId("hazard_existing_uploads").innerHTML = "";
-  clearSnapshot('hazardCard');
+  snapshotCard('hazardCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 async function saveEditedHazard(){
   const card = document.getElementById('hazardCard');
@@ -6048,7 +6055,7 @@ function clearCommitteeEditor(){
   byId("committee_proof_present").value = "No";
   clearPortalFilePicker("committee_upload_files","committee_upload_preview");
   byId("committee_existing_uploads").innerHTML = "";
-  clearSnapshot('committeeCard');
+  snapshotCard('committeeCard'); // FIXED BT-UAT.01.A: reset baseline after clear
 }
 async function saveEditedCommittee(){
   const card = document.getElementById('committeeCard');
